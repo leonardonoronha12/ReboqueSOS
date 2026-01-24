@@ -1,24 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+ReboqueSOS — app para solicitar reboque, receber propostas e acompanhar em tempo real.
 
 ## Getting Started
 
-First, run the development server:
+1) Instale as dependências:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2) Crie o arquivo `.env.local` a partir do `.env.example`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+copy .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3) Rode o servidor:
+
+```bash
+npm run dev -- --port 3000
+```
+
+Abra http://localhost:3000
+
+## Setup (Supabase + Google Maps)
+
+- Supabase: preencha `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`.
+- Google Maps: preencha `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` e habilite no Google Cloud:
+  - Maps JavaScript API
+  - Geocoding API
+
+Tela de setup local:
+- http://localhost:3000/setup
 
 ## Learn More
 
@@ -31,6 +43,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1) Suba o repositório para o GitHub.
+2) Na Vercel, clique em “Add New → Project” e importe o repositório.
+3) Em “Environment Variables”, configure (pelo menos):
+   - NEXT_PUBLIC_SUPABASE_URL
+   - NEXT_PUBLIC_SUPABASE_ANON_KEY
+   - SUPABASE_SERVICE_ROLE_KEY
+   - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

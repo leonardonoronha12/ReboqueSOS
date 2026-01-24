@@ -1,0 +1,119 @@
+import { NextResponse } from "next/server";
+
+import { getUserProfile } from "@/lib/auth/getProfile";
+import { requireUser } from "@/lib/auth/requireUser";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { calculatePlatformFeeCents, getStripeServer } from "@/lib/stripe/server";
+
+export async function POST(request: Request) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  const profile = await getUserProfile(user.id);
+  if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
+
+  const body = (await request.json()) as { requestId?: string };
+  const requestId = String(body.requestId ?? "");
+  if (!requestId) return NextResponse.json({ error: "requestId obrigatório." }, { status: 400 });
+
+  const supabaseAdmin = createSupabaseAdminClient();
+  const { data: reqRow, error: reqErr } = await supabaseAdmin
+    .from("tow_requests")
+    .select("id,cliente_id,status,accepted_proposal_id")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (reqErr || !reqRow) return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
+
+  const { data: trip } = await supabaseAdmin
+    .from("tow_trips")
+    .select("id,driver_id,status")
+    .eq("request_id", requestId)
+    .maybeSingle();
+
+  const canPay =
+    profile.role === "admin" ||
+    reqRow.cliente_id === user.id ||
+    (trip?.driver_id && trip.driver_id === user.id);
+
+  if (!canPay) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+
+  if (!reqRow.accepted_proposal_id) {
+    return NextResponse.json({ error: "Pedido ainda não foi aceito." }, { status: 409 });
+  }
+
+  const { data: proposal } = await supabaseAdmin
+    .from("tow_proposals")
+    .select("id,partner_id,valor")
+    .eq("id", reqRow.accepted_proposal_id)
+    .maybeSingle();
+
+  if (!proposal) return NextResponse.json({ error: "Proposta aceita não encontrada." }, { status: 404 });
+
+  const { data: partner } = await supabaseAdmin
+    .from("tow_partners")
+    .select("id,stripe_account_id")
+    .eq("id", proposal.partner_id)
+    .maybeSingle();
+
+  if (!partner?.stripe_account_id) {
+    return NextResponse.json(
+      { error: "Parceiro sem Stripe Connect configurado." },
+      { status: 409 },
+    );
+  }
+
+  const totalCents = Math.round(Number(proposal.valor) * 100);
+  if (!Number.isFinite(totalCents) || totalCents <= 0) {
+    return NextResponse.json({ error: "Valor inválido." }, { status: 400 });
+  }
+
+  const platformFee = calculatePlatformFeeCents(totalCents);
+  const driverAmount = totalCents - platformFee;
+  const stripe = getStripeServer();
+
+  const existing = await supabaseAdmin
+    .from("payments")
+    .select("stripe_intent_id,status")
+    .eq("request_id", requestId)
+    .maybeSingle();
+
+  if (existing.data?.stripe_intent_id && existing.data.status !== "succeeded") {
+    const pi = await stripe.paymentIntents.retrieve(existing.data.stripe_intent_id);
+    if (pi.client_secret) {
+      return NextResponse.json({ clientSecret: pi.client_secret }, { status: 200 });
+    }
+  }
+
+  const intent = await stripe.paymentIntents.create({
+    amount: totalCents,
+    currency: "brl",
+    payment_method_types: ["card", "pix"],
+    application_fee_amount: platformFee,
+    transfer_data: {
+      destination: partner.stripe_account_id,
+    },
+    metadata: {
+      request_id: requestId,
+      trip_id: trip?.id ?? "",
+      partner_id: partner.id,
+    },
+  });
+
+  await supabaseAdmin.from("payments").upsert(
+    {
+      request_id: requestId,
+      stripe_intent_id: intent.id,
+      amount: totalCents,
+      currency: "brl",
+      status: intent.status,
+      platform_fee_amount: platformFee,
+      driver_amount: driverAmount,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "request_id" },
+  );
+
+  return NextResponse.json({ clientSecret: intent.client_secret }, { status: 200 });
+}
+

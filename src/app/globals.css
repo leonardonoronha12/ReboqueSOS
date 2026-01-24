@@ -1,26 +1,90 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-primary-red: #e10600;
+  --color-secondary-yellow: #ffc300;
+  --color-black: #0b0b0d;
+  --color-dark-gray: #1c1c1f;
+  --color-border: #2a2a2e;
+  --color-border-soft: rgba(42, 42, 46, 0.18);
+  --color-light-gray: #9ca3af;
+  --color-white: #ffffff;
+  --color-success: #16a34a;
+  --color-info-blue: #2563eb;
+
+  --background: var(--color-white);
+  --foreground: var(--color-black);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-montserrat);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.btn-primary {
+  background: var(--color-primary-red);
+  color: var(--color-white);
+  font-weight: 600;
+  padding: 14px 20px;
+  border-radius: 16px;
+}
+
+.btn-primary:hover {
+  filter: brightness(0.92);
+}
+
+.btn-secondary {
+  background: var(--color-secondary-yellow);
+  color: var(--color-black);
+  font-weight: 600;
+  padding: 14px 20px;
+  border-radius: 16px;
+}
+
+.btn-secondary:hover {
+  filter: brightness(0.96);
+}
+
+.card {
+  background: var(--color-white);
+  color: var(--color-black);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes sosDots {
+  0% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+}
+
+.sos-dots > span {
+  display: inline-block;
+  animation: sosDots 900ms ease-in-out infinite;
+}
+
+.sos-dots > span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.sos-dots > span:nth-child(3) {
+  animation-delay: 240ms;
 }

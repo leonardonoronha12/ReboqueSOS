@@ -1,65 +1,74 @@
-import Image from "next/image";
+import { RequestForm } from "@/app/_components/RequestForm";
+import { BrandLogo } from "@/components/BrandLogo";
+import { RequestCtaButton } from "@/app/_components/RequestCtaButton";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="relative -mx-4 -mt-8 overflow-hidden bg-brand-white px-4 py-10 sm:rounded-3xl">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_12%_0%,rgba(255,195,0,0.28)_0%,rgba(255,255,255,0)_60%),radial-gradient(55%_55%_at_88%_8%,rgba(225,6,0,0.22)_0%,rgba(255,255,255,0)_60%)]" />
+      <div className="pointer-events-none absolute inset-0 border border-brand-border/20 sm:rounded-3xl" />
+
+      <div className="relative grid gap-10 lg:grid-cols-2 lg:items-start">
+        <section className="space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <BrandLogo size="md" tone="light" />
+            <span className="rounded-full border border-brand-yellow/35 bg-brand-yellow/15 px-3 py-1 text-xs font-semibold text-brand-black">
+              24h • SOS
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-balance text-4xl font-extrabold tracking-tight sm:text-5xl">
+              Chame um reboque agora
+              <span className="text-brand-red">.</span>
+            </h1>
+            <p className="max-w-xl text-pretty text-base leading-7 text-brand-black/70">
+              Digite o endereço, use seu local ou arraste o pino no mapa. Você recebe propostas antes de confirmar.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <RequestCtaButton className="btn-primary inline-flex items-center justify-center text-base">
+              Pedir Reboque Agora
+            </RequestCtaButton>
+            <a className="btn-secondary inline-flex items-center justify-center text-base" href="/partner">
+              Sou reboque parceiro
+            </a>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="card p-4">
+              <div className="text-sm font-bold">1) Local</div>
+              <div className="mt-1 text-sm text-brand-black/70">GPS, endereço ou mapa</div>
+            </div>
+            <div className="card p-4">
+              <div className="text-sm font-bold">2) Propostas</div>
+              <div className="mt-1 text-sm text-brand-black/70">Preço e tempo estimado</div>
+            </div>
+            <div className="card p-4">
+              <div className="text-sm font-bold">3) Acompanhe</div>
+              <div className="mt-1 text-sm text-brand-black/70">Rastreio ao vivo</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded-full border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-1 font-semibold text-brand-black">
+              Amarelo: destaque de reboques
+            </span>
+            <span className="rounded-full border border-brand-red/35 bg-brand-red/10 px-3 py-1 font-semibold text-brand-red">
+              Vermelho: urgência SOS
+            </span>
+          </div>
+        </section>
+
+        <section id="solicitar" className="lg:sticky lg:top-6">
+          <div className="rounded-3xl border border-brand-yellow/35 bg-brand-yellow/10 p-2 shadow-soft">
+            <div className="rounded-3xl bg-white p-2">
+              <RequestForm />
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

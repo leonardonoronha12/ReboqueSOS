@@ -1,0 +1,63 @@
+import { redirect } from "next/navigation";
+
+import { getUserProfile } from "@/lib/auth/getProfile";
+import { requireUser } from "@/lib/auth/requireUser";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+import { ProposalFormClient } from "./proposalFormClient";
+
+export default async function PartnerRequestPage({
+  params,
+}: {
+  params: Promise<{ requestId: string }>;
+}) {
+  const { requestId } = await params;
+  const user = await requireUser();
+  if (!user) redirect("/login");
+
+  const profile = await getUserProfile(user.id);
+  if (!profile || (profile.role !== "reboque" && profile.role !== "admin")) {
+    redirect("/partner");
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: reqRow } = await supabase
+    .from("tow_requests")
+    .select("id,local_cliente,cidade,status,created_at,lat,lng")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (!reqRow) {
+    return (
+      <div className="rounded-xl border bg-white p-6">
+        <h1 className="text-xl font-semibold">Pedido não encontrado</h1>
+      </div>
+    );
+  }
+
+  const { data: myProposal } = await supabase
+    .from("tow_proposals")
+    .select("id,valor,eta_minutes,accepted,created_at")
+    .eq("request_id", requestId)
+    .eq("partner_id", user.id)
+    .maybeSingle();
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-white p-6">
+        <h1 className="text-xl font-semibold">Pedido #{reqRow.id.slice(0, 8)}</h1>
+        <p className="mt-2 text-sm text-zinc-700">
+          {reqRow.cidade} • {reqRow.local_cliente}
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="rounded-full border bg-white px-3 py-1 text-xs font-medium">
+            {reqRow.status}
+          </span>
+        </div>
+      </div>
+
+      <ProposalFormClient requestId={reqRow.id} initialProposal={myProposal ?? null} />
+    </div>
+  );
+}
+
