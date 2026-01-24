@@ -92,6 +92,17 @@ export function RequestForm() {
     return () => window.removeEventListener("reboquesos:open-request-sheet", onOpen);
   }, []);
 
+  useEffect(() => {
+    try {
+      const flag = window.sessionStorage.getItem("reboquesos.openRequestSheet");
+      if (!flag) return;
+      window.sessionStorage.removeItem("reboquesos.openRequestSheet");
+      setOpenSheet(true);
+    } catch {
+      return;
+    }
+  }, []);
+
   async function handleGetLocation() {
     setError(null);
     if (!navigator.geolocation) {
@@ -234,7 +245,7 @@ export function RequestForm() {
                 Clique para posicionar o pino e arraste para ajustar
               </div>
             </div>
-            <div className="h-[260px] w-full">
+            <div className="h-[220px] w-full sm:h-[260px]">
               <GoogleMap
                 center={coords ?? defaultCenter}
                 zoom={coords ? 15 : 12}
@@ -334,9 +345,12 @@ export function RequestForm() {
       </Sheet>
 
       {openStatus ? (
-        <div className="fixed inset-0 z-50 bg-white">
+        <div className="fixed inset-0 z-50 bg-white" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           <div className="border-b border-brand-border/20 bg-white">
-            <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
+            <div
+              className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3"
+              style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}
+            >
               <BrandLogo size="sm" tone="light" />
               <button
                 className="rounded-2xl border border-brand-border/20 bg-white px-4 py-2 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
@@ -362,12 +376,12 @@ export function RequestForm() {
             ) : null}
 
             <div className="mt-4 overflow-hidden rounded-2xl border border-brand-border/20 bg-white shadow-soft">
-              <div className="h-[56vh] w-full">
-                {apiKey && isLoaded && statusCoords ? (
-                  <GoogleMap
-                    center={statusCoords}
-                    zoom={15}
-                    mapContainerStyle={{ width: "100%", height: "100%" }}
+            <div className="h-[56vh] w-full sm:h-[58vh]">
+              {apiKey && isLoaded && statusCoords ? (
+                <GoogleMap
+                  center={statusCoords}
+                  zoom={15}
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
                     options={{ disableDefaultUI: true, clickableIcons: false }}
                   >
                     <MarkerF position={statusCoords} />
@@ -424,7 +438,7 @@ export function RequestForm() {
         ) : null}
 
         {coords && apiKey && isLoaded ? (
-          <div className="mt-4 h-[280px] w-full overflow-hidden rounded-xl border border-brand-border/20">
+          <div className="mt-4 h-[220px] w-full overflow-hidden rounded-xl border border-brand-border/20 sm:h-[280px]">
             <GoogleMap
               center={coords}
               zoom={13}
