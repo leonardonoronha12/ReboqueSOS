@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { translateAuthError } from "@/lib/auth/translateAuthError";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types";
@@ -88,7 +89,10 @@ export async function POST(request: Request) {
   const { data, error } = await supabaseServer.auth.signUp({ email, password });
 
   if (error || !data.user) {
-    return NextResponse.redirect(new URL(`/signup?error=${encodeURIComponent(error?.message ?? "Falha no cadastro")}`, request.url), 303);
+    return NextResponse.redirect(
+      new URL(`/signup?error=${encodeURIComponent(translateAuthError(error?.message ?? "Falha no cadastro"))}`, request.url),
+      303,
+    );
   }
 
   const supabaseAdmin = createSupabaseAdminClient();

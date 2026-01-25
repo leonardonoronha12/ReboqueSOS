@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { translateAuthError } from "@/lib/auth/translateAuthError";
 
 export async function POST(request: Request) {
   const formData = await request.formData();
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
   const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
 
   if (error) {
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url), 303);
+    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(translateAuthError(error.message))}`, request.url), 303);
   }
 
   return NextResponse.redirect(new URL("/", request.url), 303);
