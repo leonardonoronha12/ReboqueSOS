@@ -28,6 +28,9 @@ export function RequestForm() {
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [openSheet, setOpenSheet] = useState(false);
   const [nome, setNome] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [modeloVeiculo, setModeloVeiculo] = useState("");
+  const [sheetError, setSheetError] = useState<string | null>(null);
   const [openStatus, setOpenStatus] = useState(false);
   const [statusText, setStatusText] = useState<string>("Solicitando reboque");
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -43,6 +46,10 @@ export function RequestForm() {
     try {
       const saved = window.localStorage.getItem("reboquesos.nome");
       if (saved) setNome(saved);
+      const savedPhone = window.localStorage.getItem("reboquesos.telefone");
+      if (savedPhone) setTelefone(savedPhone);
+      const savedModel = window.localStorage.getItem("reboquesos.modeloVeiculo");
+      if (savedModel) setModeloVeiculo(savedModel);
     } catch {
       return;
     }
@@ -56,6 +63,24 @@ export function RequestForm() {
       return;
     }
   }, [nome]);
+
+  useEffect(() => {
+    try {
+      if (!telefone) return;
+      window.localStorage.setItem("reboquesos.telefone", telefone);
+    } catch {
+      return;
+    }
+  }, [telefone]);
+
+  useEffect(() => {
+    try {
+      if (!modeloVeiculo) return;
+      window.localStorage.setItem("reboquesos.modeloVeiculo", modeloVeiculo);
+    } catch {
+      return;
+    }
+  }, [modeloVeiculo]);
 
   useEffect(() => {
     const lat = coords?.lat;
@@ -145,10 +170,21 @@ export function RequestForm() {
     setError(null);
     setStatusError(null);
     setStatusText("Solicitando reboque");
-    setOpenSheet(false);
     setOpenStatus(true);
 
     try {
+      const tel = telefone.trim();
+      const model = modeloVeiculo.trim();
+      if (!tel || !model) {
+        setOpenStatus(false);
+        setSheetError("Informe telefone e modelo do veículo.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSheetError(null);
+      setOpenSheet(false);
+
       const resolved = await ensureCoords();
       if (!resolved) {
         setStatusError("Informe um endereço ou selecione um ponto no mapa.");
@@ -165,6 +201,8 @@ export function RequestForm() {
           local_cliente: resolved.address || undefined,
           lat: resolved.coords.lat,
           lng: resolved.coords.lng,
+          telefone: tel,
+          modelo_veiculo: model,
         }),
       });
 
@@ -311,6 +349,11 @@ export function RequestForm() {
         }
       >
         <div className="space-y-3">
+          {sheetError ? (
+            <div className="rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+              {sheetError}
+            </div>
+          ) : null}
           <div>
             <div className="text-sm font-bold text-brand-black">Seu nome</div>
             <input
@@ -318,6 +361,25 @@ export function RequestForm() {
               placeholder="Ex: João da Silva"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-brand-black">Telefone</div>
+            <input
+              className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+              placeholder="(21) 99999-9999"
+              inputMode="tel"
+              value={telefone}
+              onChange={(e) => setTelefone(e.target.value)}
+            />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-brand-black">Modelo do veículo</div>
+            <input
+              className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+              placeholder="Ex: Gol 1.6, Onix, HB20, Corolla..."
+              value={modeloVeiculo}
+              onChange={(e) => setModeloVeiculo(e.target.value)}
             />
           </div>
           <div>

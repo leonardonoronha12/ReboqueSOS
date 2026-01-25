@@ -9,6 +9,8 @@ type RequestRow = {
   id: string;
   local_cliente: string;
   cidade: string;
+  telefone_cliente?: string | null;
+  modelo_veiculo?: string | null;
   status: string;
   accepted_proposal_id: string | null;
   created_at: string;
@@ -126,6 +128,13 @@ export function RequestDetailsClient(props: {
             <p className="mt-1 text-sm text-zinc-700">
               {requestRow.cidade} • {requestRow.local_cliente}
             </p>
+            {requestRow.modelo_veiculo || requestRow.telefone_cliente ? (
+              <p className="mt-2 text-sm text-zinc-700">
+                {requestRow.modelo_veiculo ? `Veículo: ${requestRow.modelo_veiculo}` : null}
+                {requestRow.modelo_veiculo && requestRow.telefone_cliente ? " • " : null}
+                {requestRow.telefone_cliente ? `Telefone: ${requestRow.telefone_cliente}` : null}
+              </p>
+            ) : null}
           </div>
           <span className="inline-flex w-fit rounded-full border bg-white px-3 py-1 text-xs font-medium">
             {requestRow.status}

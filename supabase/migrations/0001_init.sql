@@ -29,11 +29,16 @@ create table if not exists public.tow_requests (
   cidade text not null,
   lat double precision not null,
   lng double precision not null,
+  telefone_cliente text,
+  modelo_veiculo text,
   status text not null default 'PENDENTE' check (status in ('PENDENTE', 'PROPOSTA_RECEBIDA', 'ACEITO', 'A_CAMINHO', 'CHEGUEI', 'EM_SERVICO', 'CONCLUIDO', 'PAGO')),
   accepted_proposal_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.tow_requests add column if not exists telefone_cliente text;
+alter table public.tow_requests add column if not exists modelo_veiculo text;
 
 create index if not exists tow_requests_cidade_created_at_idx on public.tow_requests (cidade, created_at desc);
 

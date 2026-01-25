@@ -12,7 +12,7 @@ export default async function RequestPage({
 
   const { data: requestRow } = await supabase
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,accepted_proposal_id,created_at")
+    .select("id,local_cliente,cidade,status,accepted_proposal_id,telefone_cliente,modelo_veiculo,created_at")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -48,4 +48,3 @@ export default async function RequestPage({
     />
   );
 }
-

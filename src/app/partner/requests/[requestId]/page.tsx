@@ -23,7 +23,7 @@ export default async function PartnerRequestPage({
   const supabase = await createSupabaseServerClient();
   const { data: reqRow } = await supabase
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,created_at,lat,lng")
+    .select("id,local_cliente,cidade,status,created_at,lat,lng,telefone_cliente,modelo_veiculo")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -49,6 +49,13 @@ export default async function PartnerRequestPage({
         <p className="mt-2 text-sm text-zinc-700">
           {reqRow.cidade} • {reqRow.local_cliente}
         </p>
+        {reqRow.modelo_veiculo || reqRow.telefone_cliente ? (
+          <p className="mt-2 text-sm text-zinc-700">
+            {reqRow.modelo_veiculo ? `Veículo: ${reqRow.modelo_veiculo}` : null}
+            {reqRow.modelo_veiculo && reqRow.telefone_cliente ? " • " : null}
+            {reqRow.telefone_cliente ? `Telefone: ${reqRow.telefone_cliente}` : null}
+          </p>
+        ) : null}
         <div className="mt-3 flex items-center gap-2">
           <span className="rounded-full border bg-white px-3 py-1 text-xs font-medium">
             {reqRow.status}
@@ -60,4 +67,3 @@ export default async function PartnerRequestPage({
     </div>
   );
 }
-

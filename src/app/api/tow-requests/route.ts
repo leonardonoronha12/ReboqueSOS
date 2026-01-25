@@ -23,6 +23,8 @@ export async function POST(request: Request) {
     endereco?: string;
     lat?: number | null;
     lng?: number | null;
+    telefone?: string;
+    modelo_veiculo?: string;
   };
 
   const defaultCity = "São Gonçalo";
@@ -30,6 +32,11 @@ export async function POST(request: Request) {
   let localCliente = String(body.local_cliente ?? body.endereco ?? "").trim();
   let lat = typeof body.lat === "number" ? body.lat : null;
   let lng = typeof body.lng === "number" ? body.lng : null;
+  const telefone = String(body.telefone ?? "").trim();
+  const modeloVeiculo = String(body.modelo_veiculo ?? "").trim();
+
+  if (!telefone) return NextResponse.json({ error: "Informe um telefone." }, { status: 400 });
+  if (!modeloVeiculo) return NextResponse.json({ error: "Informe o modelo do veículo." }, { status: 400 });
 
   if (lat != null && lng != null && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
     return NextResponse.json({ error: "Coordenadas inválidas." }, { status: 400 });
@@ -76,6 +83,8 @@ export async function POST(request: Request) {
       cidade,
       lat,
       lng,
+      telefone_cliente: telefone,
+      modelo_veiculo: modeloVeiculo,
       status: "PENDENTE",
     })
     .select("id,local_cliente,cidade,lat,lng")
@@ -118,6 +127,8 @@ export async function POST(request: Request) {
           `🚨 Novo chamado ReboqueSOS\n` +
           `📍 Local: ${reqRow.local_cliente}\n` +
           `📌 Distância: ${p.distanceKm.toFixed(1)} km\n` +
+          `🚗 Veículo: ${modeloVeiculo}\n` +
+          `📞 Telefone: ${telefone}\n` +
           `Cliente: ${profile.nome}\n` +
           `Clique para enviar proposta: ${origin}/partner/requests/${reqRow.id}`,
       }),
