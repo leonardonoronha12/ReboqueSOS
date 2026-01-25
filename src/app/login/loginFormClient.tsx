@@ -2,13 +2,34 @@
 
 import { useEffect, useState } from "react";
 
-function Icon(props: { name: "mail" | "lock" | "eye" | "eyeOff" | "key"; className?: string }) {
+function formatBrPhone(raw: string) {
+  const digits = raw.replace(/\D/g, "").slice(0, 11);
+  const ddd = digits.slice(0, 2);
+  const rest = digits.slice(2);
+
+  if (!ddd) return "";
+  if (digits.length <= 2) return `(${ddd}`;
+
+  if (rest.length <= 4) return `(${ddd}) ${rest}`;
+
+  if (rest.length <= 8) {
+    const a = rest.slice(0, 4);
+    const b = rest.slice(4);
+    return b ? `(${ddd}) ${a}-${b}` : `(${ddd}) ${a}`;
+  }
+
+  const a = rest.slice(0, rest.length === 9 ? 5 : 4);
+  const b = rest.slice(rest.length === 9 ? 5 : 4);
+  return `(${ddd}) ${a}-${b}`;
+}
+
+function Icon(props: { name: "phone" | "lock" | "eye" | "eyeOff" | "key"; className?: string }) {
   const cls = props.className ?? "h-5 w-5";
-  if (props.name === "mail") {
+  if (props.name === "phone") {
     return (
       <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path
-          d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm2 0 6 5 6-5H6Zm12 2.3-6 5-6-5V18h12V8.3Z"
+          d="M7.2 2h2.3c.5 0 .9.3 1 .8l.8 3.4c.1.4-.1.9-.5 1.1l-1.4.9c.9 1.8 2.4 3.3 4.2 4.2l.9-1.4c.2-.4.7-.6 1.1-.5l3.4.8c.5.1.8.5.8 1v2.3c0 .6-.5 1-1 1C11.4 17.6 6.4 12.6 6.2 3c0-.6.4-1 1-1Z"
           fill="currentColor"
         />
       </svg>
@@ -61,6 +82,9 @@ function Field(props: {
   type: string;
   placeholder?: string;
   required?: boolean;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  value?: string;
+  onChange?: (next: string) => void;
   right?: React.ReactNode;
 }) {
   return (
@@ -76,6 +100,9 @@ function Field(props: {
           type={props.type}
           placeholder={props.placeholder}
           required={props.required}
+          inputMode={props.inputMode}
+          value={props.value}
+          onChange={(e) => props.onChange?.(e.target.value)}
         />
         {props.right ? <div className="absolute inset-y-0 right-2 flex items-center">{props.right}</div> : null}
       </div>
@@ -86,6 +113,7 @@ function Field(props: {
 export function LoginFormClient(props: { initialError?: string | null }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [telefoneMasked, setTelefoneMasked] = useState("");
   const [nearbyCount, setNearbyCount] = useState<number | null>(null);
   const [nearbyStatus, setNearbyStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
@@ -165,7 +193,17 @@ export function LoginFormClient(props: { initialError?: string | null }) {
       >
         <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
           <div className="grid gap-4">
-            <Field name="email" label="Email" icon="mail" type="email" placeholder="voce@empresa.com" required />
+            <Field
+              name="telefone"
+              label="Telefone"
+              icon="phone"
+              type="tel"
+              placeholder="(DDD) 99999-9999"
+              inputMode="tel"
+              required
+              value={telefoneMasked}
+              onChange={(v) => setTelefoneMasked(formatBrPhone(v))}
+            />
             <Field
               name="password"
               label="Senha"
