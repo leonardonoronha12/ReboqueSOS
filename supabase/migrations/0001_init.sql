@@ -37,9 +37,6 @@ create table if not exists public.tow_requests (
   updated_at timestamptz not null default now()
 );
 
-alter table public.tow_requests add column if not exists telefone_cliente text;
-alter table public.tow_requests add column if not exists modelo_veiculo text;
-
 create index if not exists tow_requests_cidade_created_at_idx on public.tow_requests (cidade, created_at desc);
 
 create table if not exists public.tow_proposals (
