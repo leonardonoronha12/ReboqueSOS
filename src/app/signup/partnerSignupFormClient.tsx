@@ -187,11 +187,11 @@ function FileDropField(props: {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-bold text-brand-black">{props.title}</div>
+    <div className="min-w-0 space-y-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 break-words text-sm font-bold text-brand-black">{props.title}</div>
         {props.required ? (
-          <span className="rounded-full border border-brand-border/20 bg-white px-2 py-0.5 text-xs font-semibold text-brand-black/70">
+          <span className="shrink-0 whitespace-nowrap rounded-full border border-brand-border/20 bg-white px-2 py-0.5 text-xs font-semibold text-brand-black/70">
             Obrigatório
           </span>
         ) : null}
@@ -199,7 +199,7 @@ function FileDropField(props: {
 
       <div
         className={[
-          "rounded-2xl border bg-white p-3",
+          "w-full min-w-0 max-w-full overflow-hidden rounded-2xl border bg-white p-3",
           isDragging ? "border-brand-yellow/60 ring-4 ring-brand-yellow/20" : "border-brand-border/20",
         ].join(" ")}
         onDragEnter={(e) => {
@@ -236,7 +236,7 @@ function FileDropField(props: {
         </div>
 
         {props.value ? (
-          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3">
+          <div className="mt-3 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3">
             <Image
               src={props.value.previewUrl}
               alt="Preview"
@@ -251,7 +251,7 @@ function FileDropField(props: {
             </div>
             <button
               type="button"
-              className="rounded-xl border border-brand-border/20 bg-white px-3 py-2 text-xs font-semibold text-brand-black hover:bg-brand-yellow/10"
+              className="shrink-0 whitespace-nowrap rounded-xl border border-brand-border/20 bg-white px-3 py-2 text-xs font-semibold text-brand-black hover:bg-brand-yellow/10"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
