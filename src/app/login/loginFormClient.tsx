@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function Icon(props: { name: "mail" | "lock" | "eye" | "eyeOff" | "key"; className?: string }) {
   const cls = props.className ?? "h-5 w-5";
@@ -86,6 +86,57 @@ function Field(props: {
 export function LoginFormClient(props: { initialError?: string | null }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [nearbyCount, setNearbyCount] = useState<number | null>(null);
+  const [nearbyStatus, setNearbyStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+
+  useEffect(() => {
+    let alive = true;
+    let timeoutId: number | null = null;
+
+    if (!navigator.geolocation) {
+      timeoutId = window.setTimeout(() => {
+        if (!alive) return;
+        setNearbyStatus("error");
+      }, 0);
+      return () => {
+        alive = false;
+        if (timeoutId != null) window.clearTimeout(timeoutId);
+      };
+    }
+
+    timeoutId = window.setTimeout(() => {
+      if (!alive) return;
+      setNearbyStatus("loading");
+    }, 0);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const res = await fetch(`/api/partners/nearby?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`);
+          const json = (await res.json()) as { partners?: unknown };
+          if (!alive) return;
+          const partners = (json as { partners?: unknown[] }).partners;
+          const count = Array.isArray(partners) ? partners.length : 0;
+          setNearbyCount(count);
+          setNearbyStatus("ready");
+        } catch {
+          if (!alive) return;
+          setNearbyStatus("error");
+        }
+      },
+      () => {
+        if (!alive) return;
+        setNearbyStatus("error");
+      },
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+
+    return () => {
+      alive = false;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   return (
     <div className="card p-5">
@@ -139,11 +190,13 @@ export function LoginFormClient(props: { initialError?: string | null }) {
           {isSubmitting ? "Entrando..." : "Entrar"}
         </button>
 
-        <div className="text-center text-xs text-white/60">
-          É parceiro reboque e ainda não tem conta? Cadastre-se abaixo.
+        <div className="rounded-2xl border border-brand-border/20 bg-white/5 p-3 text-xs font-semibold text-white/70">
+          <span className="text-white">
+            {nearbyStatus === "ready" ? String(nearbyCount ?? 0) : nearbyStatus === "loading" ? "…" : "—"}
+          </span>{" "}
+          reboques próximos ativos para atender seu chamado agora
         </div>
       </form>
     </div>
   );
 }
-
