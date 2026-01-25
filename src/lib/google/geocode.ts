@@ -17,11 +17,28 @@ function extractCityFromComponents(components: GoogleGeocodeResult["address_comp
 }
 
 function buildGeocodeError(input: { resOk: boolean; httpStatus?: number; status: string; errorMessage?: string }) {
-  const parts = [];
-  if (!input.resOk && input.httpStatus) parts.push(`HTTP ${input.httpStatus}`);
-  parts.push(input.status);
-  if (input.errorMessage) parts.push(input.errorMessage);
-  return `Google Geocoding: ${parts.join(" • ")}`;
+  const status = String(input.status ?? "").trim();
+  const lower = status.toLowerCase();
+
+  const base =
+    lower === "zero_results"
+      ? "Endereço não encontrado. Tente informar rua, número, bairro e cidade (ou CEP)."
+      : lower === "invalid_request"
+        ? "Endereço inválido. Verifique o texto informado."
+        : lower === "request_denied"
+          ? "Acesso ao Google Geocoding negado. Verifique a API key e as permissões."
+          : lower === "over_query_limit" || lower === "over_daily_limit"
+            ? "Limite do Google Geocoding excedido. Tente novamente em instantes."
+            : lower === "unknown_error"
+              ? "Erro temporário no Google Geocoding. Tente novamente."
+              : "Falha ao buscar o endereço no Google Geocoding.";
+
+  const details: string[] = [];
+  if (!input.resOk && input.httpStatus) details.push(`HTTP ${input.httpStatus}`);
+  if (status) details.push(`código: ${status}`);
+  if (input.errorMessage) details.push(String(input.errorMessage));
+
+  return details.length ? `${base} (${details.join(" • ")})` : base;
 }
 
 export async function geocodeAddress(input: { address: string }) {
