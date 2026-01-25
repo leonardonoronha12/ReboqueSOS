@@ -9,14 +9,6 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { Sheet } from "@/components/ui/Sheet";
 
 type Coords = { lat: number; lng: number };
-type NearbyPartner = {
-  id: string;
-  empresa_nome: string;
-  cidade: string;
-  lat: number;
-  lng: number;
-  distance_km: number;
-};
 
 export function RequestForm() {
   const router = useRouter();
@@ -24,7 +16,7 @@ export function RequestForm() {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nearby, setNearby] = useState<NearbyPartner[] | null>(null);
+  const [nearbyCount, setNearbyCount] = useState<number | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [openSheet, setOpenSheet] = useState(false);
   const [nome, setNome] = useState("");
@@ -86,7 +78,7 @@ export function RequestForm() {
     const lat = coords?.lat;
     const lng = coords?.lng;
     if (lat == null || lng == null) {
-      setNearby(null);
+      setNearbyCount(null);
       return;
     }
 
@@ -94,16 +86,16 @@ export function RequestForm() {
     async function run() {
       setIsLoadingNearby(true);
       try {
-        const qs = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+        const qs = new URLSearchParams({ lat: String(lat), lng: String(lng), radius_km: "20", only_count: "1" });
         const res = await fetch(`/api/partners/nearby?${qs.toString()}`);
-        const json = (await res.json()) as { partners?: NearbyPartner[] };
-        if (!cancelled) setNearby(json.partners ?? []);
+        const json = (await res.json()) as { count_nearby?: number };
+        if (!cancelled) setNearbyCount(Number.isFinite(json.count_nearby) ? Number(json.count_nearby) : 0);
       } finally {
         if (!cancelled) setIsLoadingNearby(false);
       }
     }
     run().catch(() => {
-      if (!cancelled) setNearby([]);
+      if (!cancelled) setNearbyCount(0);
     });
 
     return () => {
@@ -457,60 +449,16 @@ export function RequestForm() {
       ) : null}
 
       <div id="mapa-selecao" className="mt-6 rounded-2xl border border-brand-border/20 bg-white p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-sm font-bold text-brand-black">Reboques próximos</div>
-            <div className="text-xs text-brand-text2">
-              Mostra os 3 parceiros mais próximos (por distância).
-            </div>
-          </div>
-          {isLoadingNearby ? (
-            <div className="text-xs text-brand-text2">Carregando...</div>
-          ) : null}
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-bold text-brand-black">Reboques próximos</div>
+          {isLoadingNearby ? <div className="text-xs text-brand-text2">Carregando...</div> : null}
         </div>
-
-        {!coords ? (
-          <div className="mt-3 rounded-xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
-            Use “Usar meu local” ou selecione um ponto no mapa para listar reboques próximos.
-          </div>
-        ) : nearby && nearby.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-brand-yellow/30 bg-brand-yellow/10 p-3 text-sm text-brand-black">
-            Nenhum parceiro encontrado próximo.
-          </div>
-        ) : nearby ? (
-          <div className="mt-3 space-y-2">
-            {nearby.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-brand-border/20 bg-white p-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-bold text-brand-black">{p.empresa_nome}</div>
-                  <div className="mt-0.5 text-xs text-brand-text2">{p.cidade}</div>
-                </div>
-                <div className="shrink-0 rounded-full border border-brand-yellow/40 bg-brand-yellow px-3 py-1 text-xs font-bold text-brand-black">
-                  {p.distance_km.toFixed(1)} km
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {coords && apiKey && isLoaded ? (
-          <div className="mt-4 h-[220px] w-full overflow-hidden rounded-xl border border-brand-border/20 sm:h-[280px]">
-            <GoogleMap
-              center={coords}
-              zoom={13}
-              mapContainerStyle={{ width: "100%", height: "100%" }}
-              options={{ disableDefaultUI: true, clickableIcons: false }}
-            >
-              <MarkerF position={coords} />
-              {(nearby ?? []).map((p) => (
-                <MarkerF key={p.id} position={{ lat: p.lat, lng: p.lng }} />
-              ))}
-            </GoogleMap>
-          </div>
-        ) : null}
+        <div className="mt-3 rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
+          <span className="text-brand-black">
+            {coords ? (nearbyCount ?? 0) : "—"}
+          </span>{" "}
+          reboques próximos ativos para atender seu chamado agora
+        </div>
       </div>
     </div>
   );

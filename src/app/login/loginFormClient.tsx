@@ -91,34 +91,35 @@ export function LoginFormClient(props: { initialError?: string | null }) {
 
   useEffect(() => {
     let alive = true;
-    let timeoutId: number | null = null;
+    const timeouts: number[] = [];
+    const defer = (fn: () => void) => {
+      const id = window.setTimeout(() => {
+        if (!alive) return;
+        fn();
+      }, 0);
+      timeouts.push(id);
+    };
 
     if (!navigator.geolocation) {
-      timeoutId = window.setTimeout(() => {
-        if (!alive) return;
-        setNearbyStatus("error");
-      }, 0);
+      defer(() => setNearbyStatus("error"));
       return () => {
         alive = false;
-        if (timeoutId != null) window.clearTimeout(timeoutId);
+        for (const id of timeouts) window.clearTimeout(id);
       };
     }
 
-    timeoutId = window.setTimeout(() => {
-      if (!alive) return;
-      setNearbyStatus("loading");
-    }, 0);
+    defer(() => setNearbyStatus("loading"));
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          const res = await fetch(`/api/partners/nearby?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`);
-          const json = (await res.json()) as { partners?: unknown };
+          const res = await fetch(
+            `/api/partners/nearby?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}&radius_km=20&only_count=1`,
+          );
+          const json = (await res.json()) as { count_nearby?: number };
           if (!alive) return;
-          const partners = (json as { partners?: unknown[] }).partners;
-          const count = Array.isArray(partners) ? partners.length : 0;
-          setNearbyCount(count);
+          setNearbyCount(Number.isFinite(json.count_nearby) ? Number(json.count_nearby) : 0);
           setNearbyStatus("ready");
         } catch {
           if (!alive) return;
@@ -134,7 +135,7 @@ export function LoginFormClient(props: { initialError?: string | null }) {
 
     return () => {
       alive = false;
-      if (timeoutId != null) window.clearTimeout(timeoutId);
+      for (const id of timeouts) window.clearTimeout(id);
     };
   }, []);
 

@@ -8,6 +8,8 @@ export async function GET(request: Request) {
   const cidade = url.searchParams.get("cidade") ?? "";
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
+  const radiusKm = Number(url.searchParams.get("radius_km") ?? "20");
+  const onlyCount = url.searchParams.get("only_count") === "1";
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
   const { data: partners, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const enriched = (partners ?? [])
+  const all = (partners ?? [])
     .map((p) => ({
       id: p.id,
       empresa_nome: p.empresa_nome,
@@ -38,8 +40,14 @@ export async function GET(request: Request) {
       lng: p.lng as number,
       distance_km: haversineKm({ lat, lng }, { lat: p.lat as number, lng: p.lng as number }),
     }))
-    .sort((a, b) => a.distance_km - b.distance_km)
-    .slice(0, 3);
+    .sort((a, b) => a.distance_km - b.distance_km);
 
-  return NextResponse.json({ partners: enriched }, { status: 200 });
+  const countNearby =
+    Number.isFinite(radiusKm) && radiusKm > 0 ? all.filter((p) => p.distance_km <= radiusKm).length : all.length;
+
+  if (onlyCount) {
+    return NextResponse.json({ count_nearby: countNearby }, { status: 200 });
+  }
+
+  return NextResponse.json({ partners: all.slice(0, 3), count_nearby: countNearby }, { status: 200 });
 }
