@@ -167,75 +167,90 @@ export function LoginFormClient(props: { initialError?: string | null }) {
     };
   }, []);
 
+  const nearbyLabel = nearbyStatus === "ready" ? String(nearbyCount ?? 0) : nearbyStatus === "loading" ? "…" : "—";
+
   return (
-    <div className="card p-5">
-      <div className="flex items-start gap-3">
-        <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-brand-black">
-          <Icon name="key" className="h-6 w-6" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-extrabold tracking-tight text-white">Entrar</h1>
-          <p className="mt-1 text-sm text-white/70">Acesse o painel do parceiro reboque.</p>
-        </div>
+    <div className="card relative overflow-hidden p-5 sm:p-6">
+      <div className="pointer-events-none absolute inset-0 opacity-80">
+        <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_12%_0%,rgba(255,195,0,0.16)_0%,rgba(28,28,31,0)_60%),radial-gradient(55%_55%_at_92%_8%,rgba(225,6,0,0.18)_0%,rgba(28,28,31,0)_60%)]" />
       </div>
 
-      {props.initialError ? (
-        <div className="mt-4 rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
-          {props.initialError}
-        </div>
-      ) : null}
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-brand-black">
+              <Icon name="key" className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-extrabold tracking-tight text-white">Entrar</h1>
+              <p className="mt-1 text-sm text-white/70">Acesse o painel do parceiro reboque.</p>
+            </div>
+          </div>
 
-      <form
-        className="mt-5 space-y-4"
-        action="/auth/login"
-        method="post"
-        onSubmit={() => setIsSubmitting(true)}
-      >
-        <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
-          <div className="grid gap-4">
-            <Field
-              name="telefone"
-              label="Telefone"
-              icon="phone"
-              type="tel"
-              placeholder="(DDD) 99999-9999"
-              inputMode="tel"
-              required
-              value={telefoneMasked}
-              onChange={(v) => setTelefoneMasked(formatBrPhone(v))}
-            />
-            <Field
-              name="password"
-              label="Senha"
-              icon="lock"
-              type={showPassword ? "text" : "password"}
-              placeholder="Sua senha"
-              required
-              right={
-                <button
-                  type="button"
-                  className="rounded-xl border border-brand-border/20 bg-white px-3 py-2 text-xs font-semibold text-brand-black hover:bg-brand-yellow/10"
-                  onClick={() => setShowPassword((v) => !v)}
-                >
-                  <span className="sr-only">{showPassword ? "Ocultar senha" : "Mostrar senha"}</span>
-                  <Icon name={showPassword ? "eyeOff" : "eye"} className="h-4 w-4" />
-                </button>
-              }
-            />
+          <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/80">
+            <span className="text-white">{nearbyLabel}</span> ativos
           </div>
         </div>
 
-        <button className="btn-primary w-full disabled:opacity-50" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Entrando..." : "Entrar"}
-        </button>
+        {props.initialError ? (
+          <div className="mt-4 rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+            {props.initialError}
+          </div>
+        ) : null}
 
-        <div className="rounded-2xl border border-brand-border/20 bg-white/5 p-3 text-xs font-semibold text-white/70">
-          <span className="text-white">
-            {nearbyStatus === "ready" ? String(nearbyCount ?? 0) : nearbyStatus === "loading" ? "…" : "—"}
-          </span>{" "}
-          reboques próximos ativos para atender seu chamado agora
-        </div>
-      </form>
+        <form
+          className="mt-5 space-y-4"
+          action="/auth/login"
+          method="post"
+          onSubmit={() => setIsSubmitting(true)}
+        >
+          <div className="rounded-3xl bg-white p-4 shadow-soft">
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Field
+                  name="telefone"
+                  label="Telefone"
+                  icon="phone"
+                  type="tel"
+                  placeholder="(DDD) 99999-9999"
+                  inputMode="tel"
+                  required
+                  value={telefoneMasked}
+                  onChange={(v) => setTelefoneMasked(formatBrPhone(v))}
+                />
+                <div className="text-xs text-brand-text2">Use o número cadastrado no parceiro.</div>
+              </div>
+
+              <Field
+                name="password"
+                label="Senha"
+                icon="lock"
+                type={showPassword ? "text" : "password"}
+                placeholder="Sua senha"
+                required
+                right={
+                  <button
+                    type="button"
+                    className="rounded-xl bg-brand-yellow/10 px-3 py-2 text-xs font-semibold text-brand-black hover:bg-brand-yellow/20"
+                    onClick={() => setShowPassword((v) => !v)}
+                  >
+                    <span className="sr-only">{showPassword ? "Ocultar senha" : "Mostrar senha"}</span>
+                    <Icon name={showPassword ? "eyeOff" : "eye"} className="h-4 w-4" />
+                  </button>
+                }
+              />
+            </div>
+          </div>
+
+          <button className="btn-primary w-full disabled:opacity-50" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Entrando..." : "Entrar"}
+          </button>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs font-semibold text-white/70">
+            <span className="text-white">{nearbyLabel}</span> reboques próximos ativos para atender seu chamado agora
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
