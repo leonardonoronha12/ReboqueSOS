@@ -50,6 +50,8 @@ export async function geocodeAddress(input: { address: string }) {
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   url.searchParams.set("address", input.address);
   url.searchParams.set("key", key);
+  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("region", "br");
 
   const res = await fetch(url.toString(), { method: "GET" });
   const json = (await res.json()) as {
@@ -81,6 +83,8 @@ export async function geocodeAddressDetails(input: { address: string }) {
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   url.searchParams.set("address", input.address);
   url.searchParams.set("key", key);
+  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("region", "br");
 
   const res = await fetch(url.toString(), { method: "GET" });
   const json = (await res.json()) as {
@@ -117,6 +121,8 @@ export async function reverseGeocodeCoords(input: { lat: number; lng: number }) 
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   url.searchParams.set("latlng", `${input.lat},${input.lng}`);
   url.searchParams.set("key", key);
+  url.searchParams.set("language", "pt-BR");
+  url.searchParams.set("region", "br");
 
   const res = await fetch(url.toString(), { method: "GET" });
   const json = (await res.json()) as {

@@ -40,8 +40,10 @@ export function TripMapClient(props: {
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded } = useJsApiLoader({
-    id: "reboquesos-google-maps",
+    id: "reboquesos-google-maps-ptbr",
     googleMapsApiKey: apiKey,
+    language: "pt-BR",
+    region: "BR",
   });
 
   const center = useMemo(() => towLocation ?? props.pickup, [props.pickup, towLocation]);

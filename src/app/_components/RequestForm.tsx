@@ -3,9 +3,32 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useJsApiLoader } from "@react-google-maps/api";
+
 import { Sheet } from "@/components/ui/Sheet";
 
 type Coords = { lat: number; lng: number };
+type CoordsSource = "gps" | "address" | null;
+type AddressPrediction = { description: string; placeId: string };
+type GooglePrediction = { description?: unknown; place_id?: unknown };
+type AutocompleteRequest = {
+  input: string;
+  componentRestrictions: { country: string };
+  locationBias?: unknown;
+};
+type GoogleLike = {
+  maps?: {
+    Circle?: new (opts: { center: { lat: number; lng: number }; radius: number }) => { getBounds: () => unknown };
+    places?: {
+      AutocompleteService?: new () => {
+        getPlacePredictions: (
+          req: AutocompleteRequest,
+          cb: (preds: GooglePrediction[] | null, status: string) => void,
+        ) => void;
+      };
+    };
+  };
+};
 
 function formatBrPhone(raw: string) {
   const digits = raw.replace(/\D/g, "").slice(0, 11);
@@ -31,6 +54,7 @@ function formatBrPhone(raw: string) {
 export function RequestForm() {
   const router = useRouter();
   const [coords, setCoords] = useState<Coords | null>(null);
+  const [coordsSource, setCoordsSource] = useState<CoordsSource>(null);
   const [nearbyCount, setNearbyCount] = useState<number | null>(null);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -41,6 +65,18 @@ export function RequestForm() {
   const [telefone, setTelefone] = useState("");
   const [modeloVeiculo, setModeloVeiculo] = useState("");
   const [endereco, setEndereco] = useState("");
+  const [addressPredictions, setAddressPredictions] = useState<AddressPrediction[]>([]);
+  const [isAddressAutocompleteOpen, setIsAddressAutocompleteOpen] = useState(false);
+  const [isLoadingAddressAutocomplete, setIsLoadingAddressAutocomplete] = useState(false);
+
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const { isLoaded: isGoogleMapsLoaded } = useJsApiLoader({
+    id: "reboquesos-google-maps-places-ptbr",
+    googleMapsApiKey: apiKey,
+    libraries: ["places"],
+    language: "pt-BR",
+    region: "BR",
+  });
 
   useEffect(() => {
     let alive = true;
@@ -65,7 +101,8 @@ export function RequestForm() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!alive) return;
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setCoords((prev) => prev ?? { lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setCoordsSource((prev) => prev ?? "gps");
         setGeoStatus("ready");
       },
       () => {
@@ -180,6 +217,7 @@ export function RequestForm() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setCoordsSource("gps");
       },
       () => setSheetError("Não foi possível obter sua localização."),
       { enableHighAccuracy: true, timeout: 10000 },
@@ -260,6 +298,97 @@ export function RequestForm() {
   const label =
     geoStatus === "loading" ? "…" : geoStatus === "error" ? "—" : coords ? String(nearbyCount ?? 0) : "—";
 
+  useEffect(() => {
+    const query = endereco.trim();
+    if (!apiKey || !isGoogleMapsLoaded) {
+      setAddressPredictions([]);
+      setIsLoadingAddressAutocomplete(false);
+      return;
+    }
+
+    if (!isAddressAutocompleteOpen || query.length < 3) {
+      setAddressPredictions([]);
+      setIsLoadingAddressAutocomplete(false);
+      return;
+    }
+
+    const google = (window as unknown as { google?: GoogleLike }).google;
+    const ServiceCtor = google?.maps?.places?.AutocompleteService;
+    const CircleCtor = google?.maps?.Circle;
+    if (!ServiceCtor) {
+      setAddressPredictions([]);
+      setIsLoadingAddressAutocomplete(false);
+      return;
+    }
+
+    const service = new ServiceCtor();
+    setIsLoadingAddressAutocomplete(true);
+
+    const timeoutId = window.setTimeout(() => {
+      const req: AutocompleteRequest = {
+        input: query,
+        componentRestrictions: { country: "br" },
+      };
+      const lat = coords?.lat;
+      const lng = coords?.lng;
+      if (CircleCtor && typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+        req.locationBias = new CircleCtor({
+          center: { lat, lng },
+          radius: 35000,
+        }).getBounds();
+      }
+
+      service.getPlacePredictions(req, (preds, status) => {
+        if (!isAddressAutocompleteOpen) return;
+        if (status !== "OK" || !Array.isArray(preds) || preds.length === 0) {
+          setAddressPredictions([]);
+          setIsLoadingAddressAutocomplete(false);
+          return;
+        }
+
+        setAddressPredictions(
+          preds
+            .map((p) => ({
+              description: String(p?.description ?? "").trim(),
+              placeId: String(p?.place_id ?? "").trim(),
+            }))
+            .filter((p) => p.description && p.placeId)
+            .slice(0, 6),
+        );
+        setIsLoadingAddressAutocomplete(false);
+      });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [apiKey, coords?.lat, coords?.lng, endereco, isAddressAutocompleteOpen, isGoogleMapsLoaded]);
+
+  async function selectAddressPrediction(p: AddressPrediction) {
+    setEndereco(p.description);
+    setIsAddressAutocompleteOpen(false);
+    setAddressPredictions([]);
+
+    try {
+      const res = await fetch("/api/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: p.description }),
+      });
+      const json = (await res.json()) as {
+        location?: { lat: number; lng: number };
+        formattedAddress?: string | null;
+        error?: string;
+      };
+      if (!res.ok || !json.location) throw new Error(json.error || "Não foi possível localizar o endereço.");
+      setCoords({ lat: json.location.lat, lng: json.location.lng });
+      setCoordsSource("address");
+      setEndereco(String(json.formattedAddress ?? p.description));
+    } catch (e) {
+      setSheetError(e instanceof Error ? e.message : "Não foi possível localizar o endereço.");
+    }
+  }
+
   return (
     <>
       <div id="mapa-selecao" className="rounded-2xl border border-brand-border/20 bg-white p-4">
@@ -330,12 +459,54 @@ export function RequestForm() {
 
           <div>
             <div className="text-sm font-bold text-brand-black">Endereço (opcional)</div>
-            <input
-              className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
-              placeholder="Rua, número, referência"
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+                placeholder="Rua, número, referência"
+                value={endereco}
+                onChange={(e) => {
+                  setEndereco(e.target.value);
+                  setSheetError(null);
+                  if (coordsSource === "address") {
+                    setCoords(null);
+                    setCoordsSource(null);
+                  }
+                }}
+                onFocus={() => setIsAddressAutocompleteOpen(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setIsAddressAutocompleteOpen(false), 150);
+                }}
+                role="combobox"
+                aria-expanded={isAddressAutocompleteOpen}
+                aria-controls="endereco-autocomplete-listbox"
+                aria-autocomplete="list"
+              />
+
+              {apiKey && isGoogleMapsLoaded && isAddressAutocompleteOpen ? (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-brand-border/20 bg-white shadow-sm">
+                  {isLoadingAddressAutocomplete ? (
+                    <div className="px-3 py-2 text-xs font-semibold text-brand-text2">Buscando endereços…</div>
+                  ) : addressPredictions.length ? (
+                    <div id="endereco-autocomplete-listbox" role="listbox" className="max-h-56 overflow-auto py-1">
+                      {addressPredictions.map((p) => (
+                        <button
+                          key={p.placeId}
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm text-brand-black hover:bg-brand-yellow/10"
+                          role="option"
+                          aria-selected={false}
+                          onClick={() => void selectAddressPrediction(p)}
+                        >
+                          {p.description}
+                        </button>
+                      ))}
+                    </div>
+                  ) : endereco.trim().length >= 3 ? (
+                    <div className="px-3 py-2 text-xs font-semibold text-brand-text2">Nenhum endereço encontrado.</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <button className="btn-secondary w-full" type="button" onClick={handleGetLocation}>
