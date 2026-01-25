@@ -24,7 +24,7 @@ export default async function PartnerDashboardPage() {
   const supabase = await createSupabaseServerClient();
   const { data: partner } = await supabase
     .from("tow_partners")
-    .select("id,empresa_nome,cidade,whatsapp_number,ativo")
+    .select("id,empresa_nome,cidade,whatsapp_number,ativo,stripe_account_id")
     .eq("id", user.id)
     .maybeSingle();
 

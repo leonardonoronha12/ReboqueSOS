@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type PartnerRow = {
   empresa_nome: string | null;
   cidade: string | null;
   whatsapp_number: string | null;
   ativo: boolean | null;
+  stripe_account_id?: string | null;
 };
 
 type ProfileRow = {
@@ -54,6 +55,11 @@ function formatDateTime(value: string) {
   }
 }
 
+function formatBrl(cents: number) {
+  const value = Number.isFinite(cents) ? cents / 100 : 0;
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
 export function PartnerDashboardClient(props: {
   profile: ProfileRow;
   partner: PartnerRow | null;
@@ -65,6 +71,14 @@ export function PartnerDashboardClient(props: {
   const [ativo, setAtivo] = useState(Boolean(props.partner?.ativo));
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [stripeConnected, setStripeConnected] = useState<boolean | null>(null);
+  const [availableCents, setAvailableCents] = useState(0);
+  const [pendingCents, setPendingCents] = useState(0);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [isCreatingLink, setIsCreatingLink] = useState(false);
+  const [isPayouting, setIsPayouting] = useState(false);
+  const [payoutMessage, setPayoutMessage] = useState<string | null>(null);
 
   const requestCount = props.requests.length;
   const tripCount = props.trips.length;
@@ -73,6 +87,33 @@ export function PartnerDashboardClient(props: {
     if (!ativo) return "red" as const;
     return "green" as const;
   }, [ativo]);
+
+  async function loadBalance() {
+    setBalanceError(null);
+    setIsLoadingBalance(true);
+    try {
+      const res = await fetch("/api/partner/stripe/balance");
+      const json = (await res.json()) as {
+        connected?: boolean;
+        available_cents?: number;
+        pending_cents?: number;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error || "Falha ao carregar saldo.");
+      setStripeConnected(Boolean(json.connected));
+      setAvailableCents(Number.isFinite(json.available_cents) ? Number(json.available_cents) : 0);
+      setPendingCents(Number.isFinite(json.pending_cents) ? Number(json.pending_cents) : 0);
+    } catch (e) {
+      setStripeConnected(null);
+      setBalanceError(e instanceof Error ? e.message : "Falha ao carregar saldo.");
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  }
+
+  useEffect(() => {
+    loadBalance().catch(() => null);
+  }, []);
 
   async function toggleActive() {
     const next = !ativo;
@@ -94,6 +135,54 @@ export function PartnerDashboardClient(props: {
       setUpdateError(e instanceof Error ? e.message : "Falha ao atualizar.");
     } finally {
       setIsUpdating(false);
+    }
+  }
+
+  async function openOnboarding() {
+    setIsCreatingLink(true);
+    setPayoutMessage(null);
+    try {
+      const res = await fetch("/api/partner/stripe/onboard", { method: "POST" });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) throw new Error(json.error || "Não foi possível abrir o onboarding.");
+      window.location.href = json.url;
+    } catch (e) {
+      setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o onboarding.");
+    } finally {
+      setIsCreatingLink(false);
+    }
+  }
+
+  async function openStripeDashboard() {
+    setIsCreatingLink(true);
+    setPayoutMessage(null);
+    try {
+      const res = await fetch("/api/partner/stripe/dashboard", { method: "POST" });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) throw new Error(json.error || "Não foi possível abrir o painel.");
+      window.open(json.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o painel.");
+    } finally {
+      setIsCreatingLink(false);
+    }
+  }
+
+  async function payoutAll() {
+    setIsPayouting(true);
+    setPayoutMessage(null);
+    setBalanceError(null);
+    try {
+      const res = await fetch("/api/partner/stripe/payout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const json = (await res.json()) as { status?: string; amount_cents?: number; error?: string };
+      if (!res.ok) throw new Error(json.error || "Falha ao sacar.");
+      const amount = Number.isFinite(json.amount_cents) ? Number(json.amount_cents) : 0;
+      setPayoutMessage(`Saque solicitado: ${formatBrl(amount)} (${json.status ?? "ok"})`);
+      await loadBalance();
+    } catch (e) {
+      setBalanceError(e instanceof Error ? e.message : "Falha ao sacar.");
+    } finally {
+      setIsPayouting(false);
     }
   }
 
@@ -153,6 +242,80 @@ export function PartnerDashboardClient(props: {
             Quando ativo, você pode receber alertas de novos pedidos.
           </div>
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-brand-border/20 bg-white p-4 shadow-soft">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-sm font-extrabold text-brand-black">Saldo e saque</div>
+            <div className="mt-1 text-xs text-brand-text2">
+              O pagamento cai na sua conta Stripe e o saque vai para sua conta bancária configurada.
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              className="btn-secondary disabled:opacity-50"
+              disabled={isCreatingLink}
+              onClick={openOnboarding}
+            >
+              {isCreatingLink ? "Carregando..." : "Configurar conta bancária"}
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10 disabled:opacity-50"
+              disabled={isCreatingLink || stripeConnected === false}
+              onClick={openStripeDashboard}
+            >
+              Abrir painel Stripe
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3">
+            <div className="text-xs font-semibold text-brand-black/60">Disponível para saque</div>
+            <div className="mt-1 text-lg font-extrabold text-brand-black">
+              {isLoadingBalance ? "Carregando..." : formatBrl(availableCents)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-brand-border/20 bg-white p-3">
+            <div className="text-xs font-semibold text-brand-black/60">Pendente</div>
+            <div className="mt-1 text-lg font-extrabold text-brand-black">
+              {isLoadingBalance ? "Carregando..." : formatBrl(pendingCents)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-brand-border/20 bg-white p-3">
+            <div className="text-xs font-semibold text-brand-black/60">Ação</div>
+            <button
+              type="button"
+              className="btn-primary mt-2 w-full disabled:opacity-50"
+              disabled={isPayouting || isLoadingBalance || stripeConnected !== true || availableCents <= 0}
+              onClick={payoutAll}
+            >
+              {isPayouting ? "Solicitando..." : "Sacar tudo agora"}
+            </button>
+          </div>
+        </div>
+
+        {payoutMessage ? (
+          <div className="mt-3 rounded-2xl border border-brand-success/30 bg-brand-success/10 p-3 text-sm font-semibold text-brand-success">
+            {payoutMessage}
+          </div>
+        ) : null}
+
+        {balanceError ? (
+          <div className="mt-3 rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+            {balanceError}
+          </div>
+        ) : null}
+
+        {stripeConnected === false ? (
+          <div className="mt-3 rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+            Você ainda não configurou sua conta Stripe para receber pagamentos. Clique em “Configurar conta bancária”.
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -229,4 +392,3 @@ export function PartnerDashboardClient(props: {
     </div>
   );
 }
-
