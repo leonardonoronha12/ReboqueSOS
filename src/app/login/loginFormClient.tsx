@@ -182,13 +182,13 @@ export function LoginFormClient(props: { initialError?: string | null }) {
               <Icon name="key" className="h-6 w-6" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl font-extrabold tracking-tight text-white">Entrar</h1>
-              <p className="mt-1 text-sm text-white/70">Acesse o painel do parceiro reboque.</p>
+              <h1 className="text-xl font-extrabold tracking-tight text-brand-black">Entrar</h1>
+              <p className="mt-1 text-sm text-brand-black/70">Acesse o painel do parceiro reboque.</p>
             </div>
           </div>
 
-          <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/80">
-            <span className="text-white">{nearbyLabel}</span> ativos
+          <div className="shrink-0 rounded-full border border-brand-border/20 bg-white px-3 py-1 text-xs font-semibold text-brand-black/80">
+            <span className="text-brand-black">{nearbyLabel}</span> ativos
           </div>
         </div>
 
