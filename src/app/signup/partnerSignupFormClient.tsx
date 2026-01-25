@@ -25,6 +25,27 @@ function formatCpf(raw: string) {
   return `${p1}.${p2}.${p3}-${p4}`;
 }
 
+function formatBrPhone(raw: string) {
+  const digits = raw.replace(/\D/g, "").slice(0, 11);
+  const ddd = digits.slice(0, 2);
+  const rest = digits.slice(2);
+
+  if (!ddd) return "";
+  if (digits.length <= 2) return `(${ddd}`;
+
+  if (rest.length <= 4) return `(${ddd}) ${rest}`;
+
+  if (rest.length <= 8) {
+    const a = rest.slice(0, 4);
+    const b = rest.slice(4);
+    return b ? `(${ddd}) ${a}-${b}` : `(${ddd}) ${a}`;
+  }
+
+  const a = rest.slice(0, rest.length === 9 ? 5 : 4);
+  const b = rest.slice(rest.length === 9 ? 5 : 4);
+  return `(${ddd}) ${a}-${b}`;
+}
+
 function normalizeText(value: string) {
   return value
     .normalize("NFD")
@@ -296,6 +317,8 @@ function TextField(props: {
 
 export function PartnerSignupFormClient(props: { cidades: string[]; initialError?: string | null }) {
   const [cpfMasked, setCpfMasked] = useState("");
+  const [telefoneMasked, setTelefoneMasked] = useState("");
+  const [whatsMasked, setWhatsMasked] = useState("");
   const [fotoParceiro, setFotoParceiro] = useState<SelectedImage | null>(null);
   const [fotoCaminhao, setFotoCaminhao] = useState<SelectedImage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -404,6 +427,8 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
               placeholder="(DDD) 99999-9999"
               inputMode="tel"
               required
+              value={telefoneMasked}
+              onChange={(v) => setTelefoneMasked(formatBrPhone(v))}
             />
             <div className="space-y-2">
               <TextField
@@ -440,7 +465,15 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
           </div>
 
           <div className="mt-3 grid gap-4">
-            <TextField name="empresa_nome" label="Empresa" icon="user" placeholder="Nome da empresa" required />
+            <div className="space-y-2">
+              <TextField
+                name="empresa_nome"
+                label="Empresa (opcional)"
+                icon="user"
+                placeholder="Se for autônomo, deixe em branco"
+              />
+              <div className="text-xs text-brand-text2">Se vazio, usamos seu nome como identificação.</div>
+            </div>
             <TextField name="caminhao_modelo" label="Modelo do caminhão" icon="truck" placeholder="Ex: VW Delivery / Iveco Daily" required />
             <TextField name="caminhao_placa" label="Placa" icon="truck" placeholder="ABC1D23" required />
             <label className="block space-y-2">
@@ -566,6 +599,8 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
               placeholder="(DDD) 99999-9999"
               inputMode="tel"
               required
+              value={whatsMasked}
+              onChange={(v) => setWhatsMasked(formatBrPhone(v))}
             />
           </div>
         </div>

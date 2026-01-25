@@ -9,6 +9,11 @@ function normalizeCpf(raw: string) {
   return digits;
 }
 
+function normalizeBrPhone(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  return digits;
+}
+
 function guessExtension(file: File) {
   const name = file.name || "";
   const dot = name.lastIndexOf(".");
@@ -27,7 +32,7 @@ export async function POST(request: Request) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const nome = String(formData.get("nome") ?? "");
-  const telefone = String(formData.get("telefone") ?? "");
+  const telefone = normalizeBrPhone(String(formData.get("telefone") ?? ""));
   const role = "reboque" as UserRole;
   const cpf = normalizeCpf(String(formData.get("cpf") ?? ""));
   const caminhaoModelo = String(formData.get("caminhao_modelo") ?? "");
@@ -94,9 +99,10 @@ export async function POST(request: Request) {
     role,
   });
 
-  const empresaNome = String(formData.get("empresa_nome") ?? nome);
+  const empresaNomeRaw = String(formData.get("empresa_nome") ?? "");
+  const empresaNome = empresaNomeRaw.trim() ? empresaNomeRaw.trim() : nome;
   const cidade = String(formData.get("cidade") ?? "São Gonçalo");
-  const whatsappNumber = String(formData.get("whatsapp_number") ?? telefone);
+  const whatsappNumber = normalizeBrPhone(String(formData.get("whatsapp_number") ?? telefone));
 
   const bucket = "partner-assets";
   const { error: bucketErr } = await supabaseAdmin.storage.getBucket(bucket);
