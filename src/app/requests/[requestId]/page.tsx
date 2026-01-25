@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { RequestDetailsClient } from "./requestDetailsClient";
 
@@ -8,7 +8,7 @@ export default async function RequestPage({
   params: Promise<{ requestId: string }>;
 }) {
   const { requestId } = await params;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
 
   const { data: requestRow } = await supabase
     .from("tow_requests")
@@ -32,9 +32,7 @@ export default async function RequestPage({
     return (
       <div className="rounded-xl border bg-white p-6">
         <h1 className="text-xl font-semibold">Pedido não encontrado</h1>
-        <p className="mt-2 text-sm text-zinc-700">
-          Faça login e verifique se este pedido é seu.
-        </p>
+        <p className="mt-2 text-sm text-zinc-700">Verifique o link do chamado.</p>
       </div>
     );
   }

@@ -9,15 +9,6 @@ export async function POST(
   { params }: { params: Promise<{ proposalId: string }> },
 ) {
   const { proposalId } = await params;
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-
-  const profile = await getUserProfile(user.id);
-  if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
-  if (profile.role !== "cliente" && profile.role !== "admin") {
-    return NextResponse.json({ error: "Apenas clientes podem aceitar." }, { status: 403 });
-  }
-
   const supabaseAdmin = createSupabaseAdminClient();
 
   const { data: proposal, error: propErr } = await supabaseAdmin
@@ -40,9 +31,17 @@ export async function POST(
     return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
   }
 
-  if (profile.role !== "admin" && reqRow.cliente_id !== user.id) {
-    return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  }
+  const user = await requireUser();
+  const profile = user ? await getUserProfile(user.id) : null;
+
+  const canAccept = (() => {
+    if (reqRow.cliente_id == null) return true;
+    if (!user || !profile) return false;
+    if (profile.role !== "cliente" && profile.role !== "admin") return false;
+    return profile.role === "admin" || reqRow.cliente_id === user.id;
+  })();
+
+  if (!canAccept) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
 
   if (reqRow.status === "ACEITO" || reqRow.status === "A_CAMINHO") {
     const { data: existingTrip } = await supabaseAdmin
@@ -88,4 +87,3 @@ export async function POST(
 
   return NextResponse.json({ tripId: trip.id }, { status: 200 });
 }
-

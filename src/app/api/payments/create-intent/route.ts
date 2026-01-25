@@ -6,15 +6,12 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculatePlatformFeeCents, getStripeServer } from "@/lib/stripe/server";
 
 export async function POST(request: Request) {
-  const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-
-  const profile = await getUserProfile(user.id);
-  if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
-
   const body = (await request.json()) as { requestId?: string };
   const requestId = String(body.requestId ?? "");
   if (!requestId) return NextResponse.json({ error: "requestId obrigatório." }, { status: 400 });
+
+  const user = await requireUser();
+  const profile = user ? await getUserProfile(user.id) : null;
 
   const supabaseAdmin = createSupabaseAdminClient();
   const { data: reqRow, error: reqErr } = await supabaseAdmin
@@ -31,10 +28,11 @@ export async function POST(request: Request) {
     .eq("request_id", requestId)
     .maybeSingle();
 
-  const canPay =
-    profile.role === "admin" ||
-    reqRow.cliente_id === user.id ||
-    (trip?.driver_id && trip.driver_id === user.id);
+  const canPay = (() => {
+    if (!user) return reqRow.cliente_id == null;
+    if (!profile) return false;
+    return profile.role === "admin" || reqRow.cliente_id === user.id || (trip?.driver_id && trip.driver_id === user.id);
+  })();
 
   if (!canPay) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
 
@@ -116,4 +114,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ clientSecret: intent.client_secret }, { status: 200 });
 }
-

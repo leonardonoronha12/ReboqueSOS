@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { PaymentCheckoutClient } from "./paymentCheckoutClient";
 
@@ -8,7 +8,7 @@ export default async function PaymentPage({
   params: Promise<{ requestId: string }>;
 }) {
   const { requestId } = await params;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
 
   const { data: reqRow } = await supabase
     .from("tow_requests")
@@ -36,4 +36,3 @@ export default async function PaymentPage({
     </div>
   );
 }
-

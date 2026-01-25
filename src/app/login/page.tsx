@@ -40,12 +40,11 @@ export default async function LoginPage({
         </button>
       </form>
       <p className="mt-4 text-sm text-zinc-600">
-        Não tem conta?{" "}
+        É parceiro reboque?{" "}
         <a className="font-medium text-black underline" href="/signup">
-          Criar conta
+          Cadastrar
         </a>
       </p>
     </div>
   );
 }
-

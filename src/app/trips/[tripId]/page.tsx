@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { TripMapClient } from "./tripMapClient";
 
@@ -8,7 +8,7 @@ export default async function TripPage({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
 
   const { data: trip } = await supabase
     .from("tow_trips")
@@ -65,4 +65,3 @@ export default async function TripPage({
     </div>
   );
 }
-

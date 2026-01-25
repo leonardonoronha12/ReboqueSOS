@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const password = String(formData.get("password") ?? "");
   const nome = String(formData.get("nome") ?? "");
   const telefone = String(formData.get("telefone") ?? "");
-  const role = String(formData.get("role") ?? "cliente") as UserRole;
+  const role = "reboque" as UserRole;
 
   const supabaseServer = await createSupabaseServerClient();
   const { data, error } = await supabaseServer.auth.signUp({ email, password });
@@ -27,19 +27,16 @@ export async function POST(request: Request) {
     role,
   });
 
-  if (role === "reboque") {
-    const empresaNome = String(formData.get("empresa_nome") ?? nome);
-    const cidade = String(formData.get("cidade") ?? "São Gonçalo");
-    const whatsappNumber = String(formData.get("whatsapp_number") ?? telefone);
-    await supabaseAdmin.from("tow_partners").upsert({
-      id: data.user.id,
-      empresa_nome: empresaNome,
-      cidade,
-      whatsapp_number: whatsappNumber || null,
-      ativo: true,
-    });
-  }
+  const empresaNome = String(formData.get("empresa_nome") ?? nome);
+  const cidade = String(formData.get("cidade") ?? "São Gonçalo");
+  const whatsappNumber = String(formData.get("whatsapp_number") ?? telefone);
+  await supabaseAdmin.from("tow_partners").upsert({
+    id: data.user.id,
+    empresa_nome: empresaNome,
+    cidade,
+    whatsapp_number: whatsappNumber || null,
+    ativo: true,
+  });
 
   return NextResponse.redirect(new URL("/", request.url), 303);
 }
-

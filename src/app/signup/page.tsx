@@ -9,20 +9,21 @@ export default async function SignupPage({
 
   return (
     <div className="mx-auto w-full max-w-md p-6">
-      <h1 className="text-2xl font-semibold">Criar conta</h1>
+      <h1 className="text-2xl font-semibold">Cadastro de parceiro reboque</h1>
       {error ? (
         <p className="mt-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}
       <form className="mt-6 space-y-4" action="/auth/signup" method="post">
+        <input type="hidden" name="role" value="reboque" />
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Nome</span>
           <input className="w-full rounded-md border px-3 py-2" name="nome" required />
         </label>
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Telefone (WhatsApp)</span>
-          <input className="w-full rounded-md border px-3 py-2" name="telefone" />
+          <input className="w-full rounded-md border px-3 py-2" name="telefone" required />
         </label>
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Email</span>
@@ -42,18 +43,11 @@ export default async function SignupPage({
             required
           />
         </label>
-        <label className="block space-y-1">
-          <span className="text-sm text-zinc-700">Tipo</span>
-          <select className="w-full rounded-md border px-3 py-2" name="role" defaultValue="cliente">
-            <option value="cliente">Cliente</option>
-            <option value="reboque">Parceiro Reboque</option>
-          </select>
-        </label>
         <div className="space-y-4 rounded-md border p-4">
-          <p className="text-sm font-medium">Se for parceiro</p>
+          <p className="text-sm font-medium">Dados do parceiro</p>
           <label className="block space-y-1">
             <span className="text-sm text-zinc-700">Empresa</span>
-            <input className="w-full rounded-md border px-3 py-2" name="empresa_nome" />
+            <input className="w-full rounded-md border px-3 py-2" name="empresa_nome" required />
           </label>
           <label className="block space-y-1">
             <span className="text-sm text-zinc-700">Cidade</span>
@@ -67,7 +61,7 @@ export default async function SignupPage({
           </label>
           <label className="block space-y-1">
             <span className="text-sm text-zinc-700">WhatsApp</span>
-            <input className="w-full rounded-md border px-3 py-2" name="whatsapp_number" />
+            <input className="w-full rounded-md border px-3 py-2" name="whatsapp_number" required />
           </label>
         </div>
         <button className="w-full rounded-md bg-black px-4 py-2 text-white" type="submit">
@@ -83,4 +77,3 @@ export default async function SignupPage({
     </div>
   );
 }
-

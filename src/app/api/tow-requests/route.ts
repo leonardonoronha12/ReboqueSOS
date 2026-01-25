@@ -9,15 +9,10 @@ import { sendWhatsAppMessage } from "@/lib/whatsapp/sendWhatsApp";
 
 export async function POST(request: Request) {
   const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-
-  const profile = await getUserProfile(user.id);
-  if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
-  if (profile.role !== "cliente" && profile.role !== "admin") {
-    return NextResponse.json({ error: "Apenas clientes podem solicitar." }, { status: 403 });
-  }
+  const profile = user ? await getUserProfile(user.id) : null;
 
   const body = (await request.json()) as {
+    nome?: string;
     cidade?: string;
     local_cliente?: string;
     endereco?: string;
@@ -28,6 +23,7 @@ export async function POST(request: Request) {
   };
 
   const defaultCity = "São Gonçalo";
+  const clienteNome = String(body.nome ?? profile?.nome ?? "").trim();
   let cidade = String(body.cidade ?? "").trim();
   let localCliente = String(body.local_cliente ?? body.endereco ?? "").trim();
   let lat = typeof body.lat === "number" ? body.lat : null;
@@ -35,6 +31,7 @@ export async function POST(request: Request) {
   const telefone = String(body.telefone ?? "").trim();
   const modeloVeiculo = String(body.modelo_veiculo ?? "").trim();
 
+  if (!clienteNome) return NextResponse.json({ error: "Informe seu nome." }, { status: 400 });
   if (!telefone) return NextResponse.json({ error: "Informe um telefone." }, { status: 400 });
   if (!modeloVeiculo) return NextResponse.json({ error: "Informe o modelo do veículo." }, { status: 400 });
 
@@ -78,7 +75,8 @@ export async function POST(request: Request) {
   const { data: reqRow, error: reqErr } = await supabaseAdmin
     .from("tow_requests")
     .insert({
-      cliente_id: user.id,
+      cliente_id: user?.id ?? null,
+      cliente_nome: clienteNome,
       local_cliente: localCliente,
       cidade,
       lat,
@@ -129,7 +127,7 @@ export async function POST(request: Request) {
           `📌 Distância: ${p.distanceKm.toFixed(1)} km\n` +
           `🚗 Veículo: ${modeloVeiculo}\n` +
           `📞 Telefone: ${telefone}\n` +
-          `Cliente: ${profile.nome}\n` +
+          `Cliente: ${clienteNome}\n` +
           `Clique para enviar proposta: ${origin}/partner/requests/${reqRow.id}`,
       }),
     ),

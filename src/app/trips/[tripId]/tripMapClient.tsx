@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-
 type Coords = { lat: number; lng: number };
 
 export function TripMapClient(props: {
@@ -17,27 +15,26 @@ export function TripMapClient(props: {
   const [towLocation, setTowLocation] = useState<Coords | null>(props.initialTowLocation);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`tow_live_location:${props.tripId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tow_live_location",
-          filter: `trip_id=eq.${props.tripId}`,
-        },
-        (payload) => {
-          if (!payload.new) return;
-          const row = payload.new as { lat: number; lng: number };
-          setTowLocation({ lat: row.lat, lng: row.lng });
-        },
-      )
-      .subscribe();
+    let alive = true;
 
+    async function refresh() {
+      try {
+        const res = await fetch(`/api/public/trips/${props.tripId}/live`, { method: "GET" });
+        const json = (await res.json()) as { live?: { lat: number; lng: number } | null };
+        if (!alive) return;
+        if (res.ok && json.live && Number.isFinite(json.live.lat) && Number.isFinite(json.live.lng)) {
+          setTowLocation({ lat: json.live.lat, lng: json.live.lng });
+        }
+      } catch {
+        return;
+      }
+    }
+
+    void refresh();
+    const id = window.setInterval(refresh, 2500);
     return () => {
-      void supabase.removeChannel(channel);
+      alive = false;
+      window.clearInterval(id);
     };
   }, [props.tripId]);
 
@@ -96,4 +93,3 @@ export function TripMapClient(props: {
     </div>
   );
 }
-

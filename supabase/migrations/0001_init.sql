@@ -24,7 +24,8 @@ create table if not exists public.tow_partners (
 
 create table if not exists public.tow_requests (
   id uuid primary key default gen_random_uuid(),
-  cliente_id uuid not null references public.users (id) on delete restrict,
+  cliente_id uuid references public.users (id) on delete set null,
+  cliente_nome text,
   local_cliente text not null,
   cidade text not null,
   lat double precision not null,

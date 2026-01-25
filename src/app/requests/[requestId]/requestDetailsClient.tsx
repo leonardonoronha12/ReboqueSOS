@@ -3,8 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-
 type RequestRow = {
   id: string;
   local_cliente: string;
@@ -46,60 +44,32 @@ export function RequestDetailsClient(props: {
   const accepted = useMemo(() => proposals.find((p) => p.accepted) ?? null, [proposals]);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
+    let alive = true;
 
-    const requestsChannel = supabase
-      .channel(`tow_requests:${props.requestId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tow_requests", filter: `id=eq.${props.requestId}` },
-        (payload) => {
-          if (payload.new) setRequestRow(payload.new as RequestRow);
-        },
-      )
-      .subscribe();
+    async function refresh() {
+      try {
+        const res = await fetch(`/api/public/requests/${props.requestId}`, { method: "GET" });
+        const json = (await res.json()) as {
+          request?: RequestRow;
+          proposals?: ProposalRow[];
+          trip?: TripRow | null;
+        };
+        if (!alive) return;
+        if (res.ok && json.request) {
+          setRequestRow(json.request);
+          setProposals((json.proposals ?? []) as ProposalRow[]);
+          setTrip((json.trip ?? null) as TripRow | null);
+        }
+      } catch {
+        return;
+      }
+    }
 
-    const proposalsChannel = supabase
-      .channel(`tow_proposals:${props.requestId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tow_proposals",
-          filter: `request_id=eq.${props.requestId}`,
-        },
-        () => {
-          supabase
-            .from("tow_proposals")
-            .select("id,partner_id,valor,eta_minutes,accepted,created_at")
-            .eq("request_id", props.requestId)
-            .order("created_at", { ascending: false })
-            .then(({ data }) => setProposals((data ?? []) as ProposalRow[]));
-        },
-      )
-      .subscribe();
-
-    const tripsChannel = supabase
-      .channel(`tow_trips:${props.requestId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tow_trips",
-          filter: `request_id=eq.${props.requestId}`,
-        },
-        (payload) => {
-          if (payload.new) setTrip(payload.new as TripRow);
-        },
-      )
-      .subscribe();
-
+    void refresh();
+    const id = window.setInterval(refresh, 3500);
     return () => {
-      void supabase.removeChannel(requestsChannel);
-      void supabase.removeChannel(proposalsChannel);
-      void supabase.removeChannel(tripsChannel);
+      alive = false;
+      window.clearInterval(id);
     };
   }, [props.requestId]);
 
@@ -148,14 +118,6 @@ export function RequestDetailsClient(props: {
             <a className="rounded-md border px-3 py-2 text-sm font-medium" href={`/payments/${requestRow.id}`}>
               Pagar
             </a>
-            {requestRow.status === "PAGO" ? (
-              <a
-                className="rounded-md border px-3 py-2 text-sm font-medium"
-                href={`/requests/${requestRow.id}/rating`}
-              >
-                Avaliar
-              </a>
-            ) : null}
           </div>
         ) : null}
       </div>

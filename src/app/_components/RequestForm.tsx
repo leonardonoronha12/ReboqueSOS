@@ -173,11 +173,12 @@ export function RequestForm() {
     setOpenStatus(true);
 
     try {
+      const displayName = nome.trim();
       const tel = telefone.trim();
       const model = modeloVeiculo.trim();
-      if (!tel || !model) {
+      if (!displayName || !tel || !model) {
         setOpenStatus(false);
-        setSheetError("Informe telefone e modelo do veículo.");
+        setSheetError("Informe nome, telefone e modelo do veículo.");
         setIsSubmitting(false);
         return;
       }
@@ -197,6 +198,7 @@ export function RequestForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          nome: displayName,
           endereco: resolved.address || undefined,
           local_cliente: resolved.address || undefined,
           lat: resolved.coords.lat,
@@ -207,11 +209,6 @@ export function RequestForm() {
       });
 
       const json = (await res.json()) as { id?: string; error?: string };
-      if (res.status === 401) {
-        setOpenStatus(false);
-        router.push("/login");
-        return;
-      }
       if (!res.ok) throw new Error(json.error || "Falha ao solicitar reboque.");
       if (!json.id) throw new Error("Resposta inválida.");
 

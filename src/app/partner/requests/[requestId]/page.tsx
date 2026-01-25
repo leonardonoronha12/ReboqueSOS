@@ -23,7 +23,7 @@ export default async function PartnerRequestPage({
   const supabase = await createSupabaseServerClient();
   const { data: reqRow } = await supabase
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,created_at,lat,lng,telefone_cliente,modelo_veiculo")
+    .select("id,local_cliente,cidade,status,created_at,lat,lng,cliente_nome,telefone_cliente,modelo_veiculo")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -49,6 +49,9 @@ export default async function PartnerRequestPage({
         <p className="mt-2 text-sm text-zinc-700">
           {reqRow.cidade} • {reqRow.local_cliente}
         </p>
+        {reqRow.cliente_nome ? (
+          <p className="mt-2 text-sm text-zinc-700">Cliente: {reqRow.cliente_nome}</p>
+        ) : null}
         {reqRow.modelo_veiculo || reqRow.telefone_cliente ? (
           <p className="mt-2 text-sm text-zinc-700">
             {reqRow.modelo_veiculo ? `Veículo: ${reqRow.modelo_veiculo}` : null}
