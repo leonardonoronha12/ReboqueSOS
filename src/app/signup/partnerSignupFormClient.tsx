@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type SelectedImage = { file: File; previewUrl: string };
 
@@ -23,6 +23,22 @@ function formatCpf(raw: string) {
   if (digits.length <= 6) return `${p1}.${p2}`;
   if (digits.length <= 9) return `${p1}.${p2}.${p3}`;
   return `${p1}.${p2}.${p3}-${p4}`;
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function matchCity(input: string, options: string[]) {
+  const needle = normalizeText(input);
+  for (const c of options) {
+    if (normalizeText(c) === needle) return c;
+  }
+  return null;
 }
 
 function isImage(file: File) {
@@ -283,9 +299,70 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
   const [fotoParceiro, setFotoParceiro] = useState<SelectedImage | null>(null);
   const [fotoCaminhao, setFotoCaminhao] = useState<SelectedImage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cidade, setCidade] = useState<string>(props.cidades[0] ?? "");
+  const [cidadeStatus, setCidadeStatus] = useState<"idle" | "detecting" | "detected" | "manual" | "error">("idle");
+  const [cidadeHint, setCidadeHint] = useState<string | null>(null);
 
   const cpfDigits = useMemo(() => cpfMasked.replace(/\D/g, ""), [cpfMasked]);
   const cpfIsValid = cpfDigits.length === 0 || cpfDigits.length === 11;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function detect() {
+      if (!navigator.geolocation) {
+        if (!alive) return;
+        setCidadeStatus("error");
+        setCidadeHint("Seu navegador não suporta GPS.");
+        return;
+      }
+
+      setCidadeStatus("detecting");
+      setCidadeHint("Detectando sua cidade pelo GPS...");
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            const res = await fetch("/api/reverse-geocode", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            });
+            const json = (await res.json()) as { cidade?: string | null; error?: string };
+            if (!alive) return;
+
+            const rawCity = String(json.cidade ?? "").trim();
+            const matched = rawCity ? matchCity(rawCity, props.cidades) : null;
+
+            if (matched) {
+              setCidade(matched);
+              setCidadeStatus("detected");
+              setCidadeHint(`Cidade detectada: ${matched}`);
+              return;
+            }
+
+            setCidadeStatus("manual");
+            setCidadeHint(rawCity ? `Cidade detectada fora da lista: ${rawCity}` : "Não consegui detectar sua cidade.");
+          } catch {
+            if (!alive) return;
+            setCidadeStatus("manual");
+            setCidadeHint("Não consegui detectar sua cidade. Selecione manualmente.");
+          }
+        },
+        () => {
+          if (!alive) return;
+          setCidadeStatus("manual");
+          setCidadeHint("Permissão de localização negada. Selecione sua cidade.");
+        },
+        { enableHighAccuracy: true, timeout: 12000 },
+      );
+    }
+
+    void detect();
+    return () => {
+      alive = false;
+    };
+  }, [props.cidades]);
 
   return (
     <div className="card p-5">
@@ -387,18 +464,100 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
             </label>
             <label className="block space-y-2">
               <span className="text-sm font-bold text-brand-black">Cidade de atendimento</span>
-              <select
-                className="w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
-                name="cidade"
-                defaultValue={props.cidades[0]}
-              >
-                {props.cidades.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <div className="text-xs text-brand-text2">Você recebe chamados dessa cidade e arredores.</div>
+              {cidadeStatus === "detected" ? (
+                <>
+                  <select
+                    className="w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+                    name="cidade"
+                    value={cidade}
+                    disabled
+                    onChange={(e) => setCidade(e.target.value)}
+                  >
+                    <option value={cidade}>{cidade}</option>
+                  </select>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-brand-text2">{cidadeHint ?? "Cidade definida pelo GPS."}</span>
+                    <button
+                      type="button"
+                      className="font-semibold text-brand-black underline"
+                      onClick={() => {
+                        setCidadeStatus("manual");
+                        setCidadeHint("Selecione sua cidade.");
+                      }}
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <select
+                    className="w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+                    name="cidade"
+                    value={cidade}
+                    onChange={(e) => setCidade(e.target.value)}
+                    disabled={cidadeStatus === "detecting"}
+                  >
+                    {props.cidades.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-brand-text2">
+                      {cidadeHint ?? "Você recebe chamados dessa cidade e arredores."}
+                    </span>
+                    {cidadeStatus === "detecting" ? (
+                      <span className="rounded-full border border-brand-border/20 bg-brand-yellow/10 px-2 py-0.5 font-semibold text-brand-black/70">
+                        Detectando...
+                      </span>
+                    ) : null}
+                    {cidadeStatus !== "detecting" ? (
+                      <button
+                        type="button"
+                        className="font-semibold text-brand-black underline"
+                        onClick={() => {
+                          setCidadeStatus("detecting");
+                          setCidadeHint("Detectando sua cidade pelo GPS...");
+                          navigator.geolocation?.getCurrentPosition(
+                            async (pos) => {
+                              try {
+                                const res = await fetch("/api/reverse-geocode", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                });
+                                const json = (await res.json()) as { cidade?: string | null; error?: string };
+                                const rawCity = String(json.cidade ?? "").trim();
+                                const matched = rawCity ? matchCity(rawCity, props.cidades) : null;
+                                if (matched) {
+                                  setCidade(matched);
+                                  setCidadeStatus("detected");
+                                  setCidadeHint(`Cidade detectada: ${matched}`);
+                                } else {
+                                  setCidadeStatus("manual");
+                                  setCidadeHint(rawCity ? `Cidade detectada fora da lista: ${rawCity}` : "Não consegui detectar sua cidade.");
+                                }
+                              } catch {
+                                setCidadeStatus("manual");
+                                setCidadeHint("Não consegui detectar sua cidade. Selecione manualmente.");
+                              }
+                            },
+                            () => {
+                              setCidadeStatus("manual");
+                              setCidadeHint("Permissão de localização negada. Selecione sua cidade.");
+                            },
+                            { enableHighAccuracy: true, timeout: 12000 },
+                          );
+                        }}
+                      >
+                        Tentar GPS
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              )}
             </label>
             <TextField
               name="whatsapp_number"
