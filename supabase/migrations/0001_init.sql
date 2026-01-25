@@ -18,9 +18,17 @@ create table if not exists public.tow_partners (
   whatsapp_number text,
   ativo boolean not null default true,
   stripe_account_id text,
+  cpf text,
+  caminhao_modelo text,
+  caminhao_placa text,
+  caminhao_tipo text,
+  foto_parceiro_path text,
+  foto_caminhao_path text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create unique index if not exists tow_partners_cpf_unique_idx on public.tow_partners (cpf) where cpf is not null;
 
 create table if not exists public.tow_requests (
   id uuid primary key default gen_random_uuid(),
@@ -130,10 +138,11 @@ to authenticated
 using (id = auth.uid() or public.is_admin())
 with check (id = auth.uid() or public.is_admin());
 
+drop policy if exists partners_select_public on public.tow_partners;
 create policy partners_select_public on public.tow_partners
 for select
 to authenticated
-using (ativo = true or public.is_admin() or id = auth.uid());
+using (public.is_admin() or id = auth.uid());
 
 create policy partners_update_self on public.tow_partners
 for update

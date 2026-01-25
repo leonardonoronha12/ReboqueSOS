@@ -15,7 +15,7 @@ export default async function SignupPage({
           {error}
         </p>
       ) : null}
-      <form className="mt-6 space-y-4" action="/auth/signup" method="post">
+      <form className="mt-6 space-y-4" action="/auth/signup" method="post" encType="multipart/form-data">
         <input type="hidden" name="role" value="reboque" />
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Nome</span>
@@ -24,6 +24,16 @@ export default async function SignupPage({
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Telefone (WhatsApp)</span>
           <input className="w-full rounded-md border px-3 py-2" name="telefone" required />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm text-zinc-700">CPF</span>
+          <input
+            className="w-full rounded-md border px-3 py-2"
+            name="cpf"
+            inputMode="numeric"
+            placeholder="Somente números"
+            required
+          />
         </label>
         <label className="block space-y-1">
           <span className="text-sm text-zinc-700">Email</span>
@@ -50,6 +60,23 @@ export default async function SignupPage({
             <input className="w-full rounded-md border px-3 py-2" name="empresa_nome" required />
           </label>
           <label className="block space-y-1">
+            <span className="text-sm text-zinc-700">Modelo do caminhão</span>
+            <input className="w-full rounded-md border px-3 py-2" name="caminhao_modelo" required />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm text-zinc-700">Placa</span>
+            <input className="w-full rounded-md border px-3 py-2" name="caminhao_placa" required />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm text-zinc-700">Tipo</span>
+            <select className="w-full rounded-md border px-3 py-2" name="caminhao_tipo" defaultValue="plataforma">
+              <option value="plataforma">Plataforma</option>
+              <option value="guincho">Guincho</option>
+              <option value="munk">Munck</option>
+              <option value="outro">Outro</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
             <span className="text-sm text-zinc-700">Cidade</span>
             <select className="w-full rounded-md border px-3 py-2" name="cidade" defaultValue={cidades[0]}>
               {cidades.map((c) => (
@@ -62,6 +89,14 @@ export default async function SignupPage({
           <label className="block space-y-1">
             <span className="text-sm text-zinc-700">WhatsApp</span>
             <input className="w-full rounded-md border px-3 py-2" name="whatsapp_number" required />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm text-zinc-700">Foto do parceiro</span>
+            <input className="w-full rounded-md border px-3 py-2" name="foto_parceiro" type="file" accept="image/*" required />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm text-zinc-700">Foto do caminhão</span>
+            <input className="w-full rounded-md border px-3 py-2" name="foto_caminhao" type="file" accept="image/*" required />
           </label>
         </div>
         <button className="w-full rounded-md bg-black px-4 py-2 text-white" type="submit">
