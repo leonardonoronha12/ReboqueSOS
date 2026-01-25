@@ -4,6 +4,8 @@ import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { PartnerDashboardClient } from "./partnerDashboardClient";
+
 export default async function PartnerDashboardPage() {
   const user = await requireUser();
   if (!user) redirect("/login");
@@ -44,79 +46,23 @@ export default async function PartnerDashboardPage() {
     .limit(20);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border bg-white p-6">
-        <h1 className="text-xl font-semibold">Painel do motorista</h1>
-        <p className="mt-1 text-sm text-zinc-700">
-          {partner?.empresa_nome ?? profile.nome} • {cidade} •{" "}
-          {partner?.ativo ? "Ativo" : "Inativo"}
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border bg-white p-6">
-          <h2 className="text-lg font-semibold">Pedidos recebidos</h2>
-          {requests?.length ? (
-            <div className="mt-4 space-y-3">
-              {requests.map((r) => (
-                <a
-                  key={r.id}
-                  className="block rounded-lg border p-4 hover:bg-zinc-50"
-                  href={`/partner/requests/${r.id}`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm">
-                      <div className="font-medium">{r.local_cliente}</div>
-                      <div className="text-xs text-zinc-600">
-                        {r.cidade} • {new Date(r.created_at).toLocaleString("pt-BR")}
-                      </div>
-                    </div>
-                    <span className="rounded-full border bg-white px-3 py-1 text-xs font-medium">
-                      {r.status}
-                    </span>
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-md border bg-zinc-50 p-4 text-sm text-zinc-700">
-              Nenhum pedido aberto para {cidade}.
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border bg-white p-6">
-          <h2 className="text-lg font-semibold">Minhas corridas</h2>
-          {trips?.length ? (
-            <div className="mt-4 space-y-3">
-              {trips.map((t) => (
-                <a
-                  key={t.id}
-                  className="block rounded-lg border p-4 hover:bg-zinc-50"
-                  href={`/partner/trips/${t.id}`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm">
-                      <div className="font-medium">Trip #{t.id.slice(0, 8)}</div>
-                      <div className="text-xs text-zinc-600">
-                        Pedido #{t.request_id.slice(0, 8)}
-                      </div>
-                    </div>
-                    <span className="rounded-full border bg-white px-3 py-1 text-xs font-medium">
-                      {t.status}
-                    </span>
-                  </div>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-md border bg-zinc-50 p-4 text-sm text-zinc-700">
-              Nenhuma corrida ainda.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <PartnerDashboardClient
+      profile={profile}
+      partner={partner ?? null}
+      cidade={cidade}
+      requests={(requests ?? []).map((r) => ({
+        id: r.id,
+        local_cliente: r.local_cliente,
+        cidade: r.cidade,
+        status: r.status,
+        created_at: r.created_at,
+      }))}
+      trips={(trips ?? []).map((t) => ({
+        id: t.id,
+        request_id: t.request_id,
+        status: t.status,
+        created_at: t.created_at,
+      }))}
+    />
   );
 }
-

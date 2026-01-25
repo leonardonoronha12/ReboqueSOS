@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getUserProfile } from "@/lib/auth/getProfile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { translateAuthError } from "@/lib/auth/translateAuthError";
 
@@ -60,10 +61,21 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
 
   if (error) {
     return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(translateAuthError(error.message))}`, request.url), 303);
+  }
+
+  const userId = data.user?.id;
+  if (userId) {
+    const profile = await getUserProfile(userId);
+    if (profile?.role === "admin") {
+      return NextResponse.redirect(new URL("/admin", request.url), 303);
+    }
+    if (profile?.role === "reboque") {
+      return NextResponse.redirect(new URL("/partner", request.url), 303);
+    }
   }
 
   return NextResponse.redirect(new URL("/", request.url), 303);

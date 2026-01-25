@@ -157,5 +157,5 @@ export async function POST(request: Request) {
     foto_caminhao_path: caminhaoPath,
   });
 
-  return NextResponse.redirect(new URL("/", request.url), 303);
+  return NextResponse.redirect(new URL("/partner", request.url), 303);
 }
