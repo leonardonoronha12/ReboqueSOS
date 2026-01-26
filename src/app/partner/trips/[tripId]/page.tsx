@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { TripControlClient } from "./tripControlClient";
 
@@ -20,7 +20,7 @@ export default async function PartnerTripPage({
     redirect("/partner");
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
   const { data: trip } = await supabase
     .from("tow_trips")
     .select("id,request_id,driver_id,status,created_at,updated_at")
@@ -63,4 +63,3 @@ export default async function PartnerTripPage({
     </div>
   );
 }
-

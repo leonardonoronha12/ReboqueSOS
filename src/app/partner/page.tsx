@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { PartnerDashboardClient } from "./partnerDashboardClient";
 
@@ -21,7 +21,7 @@ export default async function PartnerDashboardPage() {
     );
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
   const { data: partner } = await supabase
     .from("tow_partners")
     .select("id,empresa_nome,cidade,whatsapp_number,ativo,stripe_account_id")

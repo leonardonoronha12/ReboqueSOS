@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { getOptionalEnvAny } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { ProposalFormClient } from "./proposalFormClient";
 
@@ -21,7 +21,7 @@ export default async function PartnerRequestPage({
     redirect("/partner");
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient();
   const { data: reqRow } = await supabase
     .from("tow_requests")
     .select("id,local_cliente,cidade,status,created_at,lat,lng,cliente_nome,telefone_cliente,modelo_veiculo")
