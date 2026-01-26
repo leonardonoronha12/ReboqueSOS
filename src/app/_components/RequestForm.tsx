@@ -156,11 +156,21 @@ export function RequestForm() {
     if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
-      `<rect x="6" y="26" width="30" height="16" rx="4" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<rect x="36" y="30" width="14" height="12" rx="3" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<rect x="10" y="30" width="10" height="7" rx="2" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<path d="M50 36h6v6h-8" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<path d="M52 42l-6 6h-10" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<rect x="8" y="28" width="28" height="12" rx="3" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
+      `<rect x="36" y="30" width="14" height="10" rx="3" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
+      `<rect x="12" y="31" width="9" height="6" rx="2" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>` +
+      `<path d="M10 40h40" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M36 40l-6 8h-8" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="M30 48l-4 4" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M26 52c2 2 4 2 6 0" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<rect x="44" y="22" width="2" height="12" fill="#0B0B0D"/>` +
+      `<path d="M45 24l-10 6" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M35 30l-10 18" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M25 48h-5" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<path d="M20 48l-2 3" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
+      `<rect x="6" y="50" width="16" height="6" rx="2" fill="#E5E7EB" stroke="#0B0B0D" stroke-width="2"/>` +
+      `<circle cx="10" cy="56" r="4" fill="#0B0B0D"/><circle cx="10" cy="56" r="2" fill="#E5E7EB"/>` +
+      `<circle cx="20" cy="56" r="4" fill="#0B0B0D"/><circle cx="20" cy="56" r="2" fill="#E5E7EB"/>` +
       `<circle cx="18" cy="46" r="6" fill="#0B0B0D"/><circle cx="18" cy="46" r="3" fill="#E5E7EB"/>` +
       `<circle cx="42" cy="46" r="6" fill="#0B0B0D"/><circle cx="42" cy="46" r="3" fill="#E5E7EB"/>` +
       `</svg>`;
