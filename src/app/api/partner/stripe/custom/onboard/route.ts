@@ -38,6 +38,11 @@ function getClientIp(request: Request) {
   );
 }
 
+function isStripeTestMode() {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  return key.startsWith("sk_test_");
+}
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -81,6 +86,7 @@ export async function POST(request: Request) {
     const bankCode = normalizeBankCode(String(body.bank?.bank_code ?? ""));
     const branchCode = normalizeBranchCode(String(body.bank?.branch_code ?? ""));
     const accountNumber = digitsOnly(String(body.bank?.account_number ?? ""));
+    const stripeTestMode = isStripeTestMode();
 
     const acceptTos = Boolean(body.accept_tos);
     if (!acceptTos) return NextResponse.json({ error: "Aceite os termos para continuar." }, { status: 400 });
@@ -94,7 +100,9 @@ export async function POST(request: Request) {
     if (!Number.isInteger(dobYear) || dobYear < 1900) return NextResponse.json({ error: "Data de nascimento inválida." }, { status: 400 });
 
     if (!line1 || !city || !state || postal.length < 8) return NextResponse.json({ error: "Endereço inválido." }, { status: 400 });
-    if (!bankCode || !branchCode || !accountNumber) return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
+    if (!stripeTestMode && (!bankCode || !branchCode || !accountNumber)) {
+      return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
+    }
 
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: partner, error: partnerErr } = await supabaseAdmin
@@ -161,15 +169,16 @@ export async function POST(request: Request) {
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
 
-    const routingNumber = `${bankCode}${branchCode}`;
+    const routingNumber = stripeTestMode ? "110000000" : `${bankCode}${branchCode}`;
+    const accountNumberFinal = stripeTestMode ? "000123456789" : accountNumber;
     const bankTok = await stripe.tokens.create({
       bank_account: {
-        country: bankCountry,
-        currency,
+        country: stripeTestMode ? "US" : bankCountry,
+        currency: stripeTestMode ? "usd" : currency,
         account_holder_name: fullName,
         account_holder_type: "individual",
         routing_number: routingNumber,
-        account_number: accountNumber,
+        account_number: accountNumberFinal,
       },
     });
 
