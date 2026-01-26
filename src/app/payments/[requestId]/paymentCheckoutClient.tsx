@@ -7,6 +7,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import { stripePromise } from "@/lib/stripe/client";
 
+async function readJsonResponse<T>(res: Response) {
+  const text = await res.text();
+  if (!text) return { ok: false as const, data: null as T | null, errorText: "" };
+  try {
+    return { ok: true as const, data: JSON.parse(text) as T, errorText: "" };
+  } catch {
+    return { ok: false as const, data: null as T | null, errorText: text };
+  }
+}
+
 function CheckoutForm(props: { options: StripePaymentElementOptions; onSubmitted: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -60,9 +70,10 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: props.requestId }),
       });
-      const json = (await res.json()) as { clientSecret?: string; error?: string };
-      if (!res.ok) throw new Error(json.error || "Falha ao criar pagamento.");
-      if (!cancelled) setClientSecret(json.clientSecret ?? null);
+      const parsed = await readJsonResponse<{ clientSecret?: string; error?: string }>(res);
+      if (!parsed.ok) throw new Error("Resposta inválida do servidor ao criar pagamento.");
+      if (!res.ok) throw new Error(parsed.data?.error || "Falha ao criar pagamento.");
+      if (!cancelled) setClientSecret(parsed.data?.clientSecret ?? null);
     }
     run().catch((e) => setError(e instanceof Error ? e.message : "Falha ao criar pagamento."));
     return () => {
