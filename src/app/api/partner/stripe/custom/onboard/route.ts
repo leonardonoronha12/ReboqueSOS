@@ -170,7 +170,7 @@ export async function POST(request: Request) {
     });
 
     const routingNumber = `${bankCode}${branchCode}`;
-    const accountNumberFinal = stripeTestMode ? "000123456789" : accountNumber;
+    const accountNumberFinal = stripeTestMode ? "0001234" : accountNumber;
     const bankTok = await stripe.tokens.create({
       bank_account: {
         country: bankCountry,
