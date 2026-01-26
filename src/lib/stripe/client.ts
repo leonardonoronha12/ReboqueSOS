@@ -1,8 +1,5 @@
 import { loadStripe } from "@stripe/stripe-js";
 
-import { getRequiredEnv } from "@/lib/env";
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 
-export const stripePromise = loadStripe(
-  getRequiredEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
-);
-
+export const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null);
