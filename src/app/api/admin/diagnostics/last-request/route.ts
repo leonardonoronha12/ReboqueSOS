@@ -36,15 +36,42 @@ export async function GET(request: Request) {
     .not("whatsapp_number", "is", null)
     .limit(200);
 
-  const nearby = (partners ?? [])
-    .filter((p) => typeof p.lat === "number" && typeof p.lng === "number" && typeof reqRow.lat === "number" && typeof reqRow.lng === "number")
+  const cityToCheck = cidade ?? (reqRow.cidade ? String(reqRow.cidade) : null);
+  const partnersInCity = (partners ?? [])
+    .filter((p) => (cityToCheck ? String(p.cidade ?? "") === cityToCheck : true))
     .map((p) => ({
       id: p.id,
       empresa_nome: p.empresa_nome,
       cidade: p.cidade,
       ativo: p.ativo,
-      whatsapp_number: p.whatsapp_number ? true : false,
-      distanceKm: haversineKm({ lat: reqRow.lat as number, lng: reqRow.lng as number }, { lat: p.lat as number, lng: p.lng as number }),
+      whatsapp_number: Boolean(p.whatsapp_number),
+      lat: p.lat,
+      lng: p.lng,
+      coords_ok: typeof p.lat === "number" && typeof p.lng === "number",
+      created_at: p.created_at,
+    }))
+    .slice(0, 20);
+
+  const nearby = (partners ?? [])
+    .filter(
+      (p) =>
+        typeof p.lat === "number" &&
+        typeof p.lng === "number" &&
+        typeof reqRow.lat === "number" &&
+        typeof reqRow.lng === "number",
+    )
+    .map((p) => ({
+      id: p.id,
+      empresa_nome: p.empresa_nome,
+      cidade: p.cidade,
+      ativo: p.ativo,
+      whatsapp_number: Boolean(p.whatsapp_number),
+      lat: p.lat,
+      lng: p.lng,
+      distanceKm: haversineKm(
+        { lat: reqRow.lat as number, lng: reqRow.lng as number },
+        { lat: p.lat as number, lng: p.lng as number },
+      ),
     }))
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, 10);
@@ -63,9 +90,9 @@ export async function GET(request: Request) {
         modelo_veiculo: reqRow.modelo_veiculo,
         created_at: reqRow.created_at,
       },
+      partners_in_city: partnersInCity,
       partners_nearby: nearby,
     },
     { status: 200 },
   );
 }
-

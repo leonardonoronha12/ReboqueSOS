@@ -117,7 +117,7 @@ export async function POST(request: Request) {
       partnersToUse = partnersAnyErr ? [] : (partnersAny ?? []);
     }
 
-    const nearby = partnersToUse
+    const candidatesWithCoords = partnersToUse
       .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
       .map((p) => ({
         ...p,
@@ -126,18 +126,21 @@ export async function POST(request: Request) {
           { lat: p.lat as number, lng: p.lng as number },
         ),
       }))
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .filter((p) => p.distanceKm <= 60)
-      .slice(0, 3);
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+
+    const targets =
+      candidatesWithCoords.length > 0
+        ? candidatesWithCoords.slice(0, 3).map((p) => ({ ...p, hasDistance: true as const }))
+        : partnersToUse.slice(0, 3).map((p) => ({ ...p, hasDistance: false as const }));
 
     const results = await Promise.allSettled(
-      nearby.map((p) =>
+      targets.map((p) =>
         sendWhatsAppMessage({
           to: String(p.whatsapp_number),
           body:
             `🚨 Novo chamado ReboqueSOS\n` +
             `📍 Local: ${reqRow.local_cliente}\n` +
-            `📌 Distância: ${p.distanceKm.toFixed(1)} km\n` +
+            (p.hasDistance ? `📌 Distância: ${(p as { distanceKm: number }).distanceKm.toFixed(1)} km\n` : "") +
             `🚗 Veículo: ${modeloVeiculo}\n` +
             `📞 Telefone: ${telefone}\n` +
             `Cliente: ${clienteNome}\n` +
