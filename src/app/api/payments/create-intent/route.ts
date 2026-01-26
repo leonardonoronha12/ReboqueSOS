@@ -95,6 +95,7 @@ export async function POST(request: Request) {
     const baseParams = {
       amount: totalCents,
       currency: "brl",
+      automatic_payment_methods: { enabled: true },
       application_fee_amount: platformFee,
       transfer_data: {
         destination: partner.stripe_account_id,
@@ -106,23 +107,7 @@ export async function POST(request: Request) {
       },
     } as const;
 
-    let intent: { id: string; status: string; client_secret: string | null };
-    try {
-      intent = await stripe.paymentIntents.create({
-        ...baseParams,
-        payment_method_types: ["card", "pix"],
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      const pixInvalid =
-        msg.includes('payment method type "pix" is invalid') ||
-        msg.toLowerCase().includes("payment method type") && msg.toLowerCase().includes("pix") && msg.toLowerCase().includes("invalid");
-      if (!pixInvalid) throw err;
-      intent = await stripe.paymentIntents.create({
-        ...baseParams,
-        payment_method_types: ["card"],
-      });
-    }
+    const intent = await stripe.paymentIntents.create(baseParams);
 
     await supabaseAdmin.from("payments").upsert(
       {
