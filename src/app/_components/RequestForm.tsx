@@ -156,23 +156,23 @@ export function RequestForm() {
     if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
-      `<rect x="8" y="28" width="28" height="12" rx="3" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<rect x="36" y="30" width="14" height="10" rx="3" fill="#FFC300" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<rect x="12" y="31" width="9" height="6" rx="2" fill="#FFFFFF" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<path d="M10 40h40" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<path d="M36 40l-6 8h-8" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<path d="M30 48l-4 4" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<path d="M26 52c2 2 4 2 6 0" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<rect x="44" y="22" width="2" height="12" fill="#0B0B0D"/>` +
-      `<path d="M45 24l-10 6" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<path d="M35 30l-10 18" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<path d="M25 48h-5" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<path d="M20 48l-2 3" fill="none" stroke="#0B0B0D" stroke-width="2" stroke-linecap="round"/>` +
-      `<rect x="6" y="50" width="16" height="6" rx="2" fill="#E5E7EB" stroke="#0B0B0D" stroke-width="2"/>` +
-      `<circle cx="10" cy="56" r="4" fill="#0B0B0D"/><circle cx="10" cy="56" r="2" fill="#E5E7EB"/>` +
-      `<circle cx="20" cy="56" r="4" fill="#0B0B0D"/><circle cx="20" cy="56" r="2" fill="#E5E7EB"/>` +
-      `<circle cx="18" cy="46" r="6" fill="#0B0B0D"/><circle cx="18" cy="46" r="3" fill="#E5E7EB"/>` +
-      `<circle cx="42" cy="46" r="6" fill="#0B0B0D"/><circle cx="42" cy="46" r="3" fill="#E5E7EB"/>` +
+      `<defs>` +
+      `<g id="reboque" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+      `<path d="M6 46V38c0-6 6-10 14-12l9-2h9v22h20l6 4-8 8H6v-6h8" />` +
+      `<path d="M22 34h10v10H16v-6c0-2 3-4 6-4z" />` +
+      `<path d="M38 46h26" />` +
+      `<path d="M44 24h12l6 6v8H38v-8l6-6z" />` +
+      `<path d="M42 30h12" />` +
+      `<circle cx="18" cy="54" r="6" />` +
+      `<circle cx="46" cy="54" r="6" />` +
+      `<circle cx="46" cy="54" r="2" />` +
+      `<circle cx="18" cy="54" r="2" />` +
+      `<circle cx="44" cy="38" r="4" />` +
+      `<circle cx="58" cy="38" r="4" />` +
+      `</g>` +
+      `</defs>` +
+      `<use href="#reboque" stroke="#0B0B0D" stroke-width="8" />` +
+      `<use href="#reboque" stroke="#FFC300" stroke-width="6" />` +
       `</svg>`;
     const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
     return {
