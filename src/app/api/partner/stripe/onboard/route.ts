@@ -36,7 +36,10 @@ export async function POST(request: Request) {
         country: "BR",
         email,
         business_type: "individual",
-        capabilities: { transfers: { requested: true } },
+        capabilities: {
+          transfers: { requested: true },
+          card_payments: { requested: true },
+        },
         metadata: { user_id: user.id },
       });
 

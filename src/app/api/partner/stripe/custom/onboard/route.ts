@@ -108,7 +108,10 @@ export async function POST(request: Request) {
         type: "custom",
         country: "BR",
         business_type: "individual",
-        capabilities: { transfers: { requested: true } },
+        capabilities: {
+          transfers: { requested: true },
+          card_payments: { requested: true },
+        },
         metadata: { user_id: user.id, app: "reboqueSOS" },
       });
       accountId = created.id;
@@ -166,4 +169,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
-
