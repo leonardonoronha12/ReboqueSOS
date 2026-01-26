@@ -22,6 +22,10 @@ export async function POST(request: Request) {
 
   if (reqErr || !reqRow) return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
 
+  if (reqRow.status === "PAGO") {
+    return NextResponse.json({ error: "Pedido já está pago." }, { status: 409 });
+  }
+
   const { data: trip } = await supabaseAdmin
     .from("tow_trips")
     .select("id,driver_id,status")
@@ -75,6 +79,10 @@ export async function POST(request: Request) {
     .select("stripe_intent_id,status")
     .eq("request_id", requestId)
     .maybeSingle();
+
+  if (existing.data?.stripe_intent_id && existing.data.status === "succeeded") {
+    return NextResponse.json({ error: "Pedido já está pago." }, { status: 409 });
+  }
 
   if (existing.data?.stripe_intent_id && existing.data.status !== "succeeded") {
     const pi = await stripe.paymentIntents.retrieve(existing.data.stripe_intent_id);
