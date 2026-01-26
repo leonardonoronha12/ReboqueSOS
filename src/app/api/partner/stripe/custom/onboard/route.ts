@@ -169,12 +169,12 @@ export async function POST(request: Request) {
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
 
-    const routingNumber = stripeTestMode ? "110000000" : `${bankCode}${branchCode}`;
+    const routingNumber = `${bankCode}${branchCode}`;
     const accountNumberFinal = stripeTestMode ? "000123456789" : accountNumber;
     const bankTok = await stripe.tokens.create({
       bank_account: {
-        country: stripeTestMode ? "US" : bankCountry,
-        currency: stripeTestMode ? "usd" : currency,
+        country: bankCountry,
+        currency,
         account_holder_name: fullName,
         account_holder_type: "individual",
         routing_number: routingNumber,
