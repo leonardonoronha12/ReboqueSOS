@@ -149,19 +149,7 @@ export function PartnerDashboardClient(props: {
   }
 
   async function openOnboarding() {
-    setIsCreatingLink(true);
-    setPayoutMessage(null);
-    try {
-      const res = await fetch("/api/partner/stripe/onboard", { method: "POST" });
-      const json = await readJsonResponse<{ url?: string; error?: string }>(res);
-      if (!res.ok) throw new Error(json?.error || "Não foi possível abrir o onboarding.");
-      if (!json?.url) throw new Error("Resposta inválida do servidor.");
-      window.location.href = json.url;
-    } catch (e) {
-      setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o onboarding.");
-    } finally {
-      setIsCreatingLink(false);
-    }
+    window.location.href = "/partner/stripe/setup";
   }
 
   async function openStripeDashboard() {
