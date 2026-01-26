@@ -60,6 +60,16 @@ function formatBrl(cents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+async function readJsonResponse<T>(res: Response) {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function PartnerDashboardClient(props: {
   profile: ProfileRow;
   partner: PartnerRow | null;
@@ -93,16 +103,16 @@ export function PartnerDashboardClient(props: {
     setIsLoadingBalance(true);
     try {
       const res = await fetch("/api/partner/stripe/balance");
-      const json = (await res.json()) as {
+      const json = await readJsonResponse<{
         connected?: boolean;
         available_cents?: number;
         pending_cents?: number;
         error?: string;
-      };
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar saldo.");
-      setStripeConnected(Boolean(json.connected));
-      setAvailableCents(Number.isFinite(json.available_cents) ? Number(json.available_cents) : 0);
-      setPendingCents(Number.isFinite(json.pending_cents) ? Number(json.pending_cents) : 0);
+      }>(res);
+      if (!res.ok) throw new Error(json?.error || "Falha ao carregar saldo.");
+      setStripeConnected(Boolean(json?.connected));
+      setAvailableCents(Number.isFinite(json?.available_cents) ? Number(json?.available_cents) : 0);
+      setPendingCents(Number.isFinite(json?.pending_cents) ? Number(json?.pending_cents) : 0);
     } catch (e) {
       setStripeConnected(null);
       setBalanceError(e instanceof Error ? e.message : "Falha ao carregar saldo.");
@@ -143,8 +153,9 @@ export function PartnerDashboardClient(props: {
     setPayoutMessage(null);
     try {
       const res = await fetch("/api/partner/stripe/onboard", { method: "POST" });
-      const json = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !json.url) throw new Error(json.error || "Não foi possível abrir o onboarding.");
+      const json = await readJsonResponse<{ url?: string; error?: string }>(res);
+      if (!res.ok) throw new Error(json?.error || "Não foi possível abrir o onboarding.");
+      if (!json?.url) throw new Error("Resposta inválida do servidor.");
       window.location.href = json.url;
     } catch (e) {
       setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o onboarding.");
@@ -158,8 +169,9 @@ export function PartnerDashboardClient(props: {
     setPayoutMessage(null);
     try {
       const res = await fetch("/api/partner/stripe/dashboard", { method: "POST" });
-      const json = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !json.url) throw new Error(json.error || "Não foi possível abrir o painel.");
+      const json = await readJsonResponse<{ url?: string; error?: string }>(res);
+      if (!res.ok) throw new Error(json?.error || "Não foi possível abrir o painel.");
+      if (!json?.url) throw new Error("Resposta inválida do servidor.");
       window.open(json.url, "_blank", "noopener,noreferrer");
     } catch (e) {
       setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o painel.");
@@ -174,10 +186,10 @@ export function PartnerDashboardClient(props: {
     setBalanceError(null);
     try {
       const res = await fetch("/api/partner/stripe/payout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const json = (await res.json()) as { status?: string; amount_cents?: number; error?: string };
-      if (!res.ok) throw new Error(json.error || "Falha ao sacar.");
-      const amount = Number.isFinite(json.amount_cents) ? Number(json.amount_cents) : 0;
-      setPayoutMessage(`Saque solicitado: ${formatBrl(amount)} (${json.status ?? "ok"})`);
+      const json = await readJsonResponse<{ status?: string; amount_cents?: number; error?: string }>(res);
+      if (!res.ok) throw new Error(json?.error || "Falha ao sacar.");
+      const amount = Number.isFinite(json?.amount_cents) ? Number(json?.amount_cents) : 0;
+      setPayoutMessage(`Saque solicitado: ${formatBrl(amount)} (${json?.status ?? "ok"})`);
       await loadBalance();
     } catch (e) {
       setBalanceError(e instanceof Error ? e.message : "Falha ao sacar.");
