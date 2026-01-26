@@ -40,6 +40,11 @@ export async function GET() {
         twilio_configured: pickSet("TWILIO_ACCOUNT_SID") && pickSet("TWILIO_AUTH_TOKEN") && pickSet("TWILIO_WHATSAPP_FROM"),
         zapi_configured: pickSet("ZAPI_BASE_URL") && pickSet("ZAPI_TOKEN") && pickSet("ZAPI_INSTANCE_ID"),
       },
+      stripe: {
+        secret_key_configured: pickSet("STRIPE_SECRET_KEY"),
+        publishable_key_configured: pickSet("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
+        webhook_secret_configured: pickSet("STRIPE_WEBHOOK_SECRET"),
+      },
     },
     { status: 200 },
   );
