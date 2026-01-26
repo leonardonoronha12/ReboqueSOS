@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getRequiredEnv } from "@/lib/env";
 import { getStripeServer } from "@/lib/stripe/server";
 
 function digitsOnly(value: string) {
@@ -83,8 +82,6 @@ export async function POST(request: Request) {
     const branchCode = normalizeBranchCode(String(body.bank?.branch_code ?? ""));
     const accountNumber = digitsOnly(String(body.bank?.account_number ?? ""));
 
-    const isTestKey = getRequiredEnv("STRIPE_SECRET_KEY").startsWith("sk_test_");
-
     const acceptTos = Boolean(body.accept_tos);
     if (!acceptTos) return NextResponse.json({ error: "Aceite os termos para continuar." }, { status: 400 });
 
@@ -97,9 +94,7 @@ export async function POST(request: Request) {
     if (!Number.isInteger(dobYear) || dobYear < 1900) return NextResponse.json({ error: "Data de nascimento inválida." }, { status: 400 });
 
     if (!line1 || !city || !state || postal.length < 8) return NextResponse.json({ error: "Endereço inválido." }, { status: 400 });
-    if (!isTestKey && (!bankCode || !branchCode || !accountNumber)) {
-      return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
-    }
+    if (!bankCode || !branchCode || !accountNumber) return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
 
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: partner, error: partnerErr } = await supabaseAdmin
@@ -145,7 +140,7 @@ export async function POST(request: Request) {
 
     await stripe.accounts.update(accountId, {
       email,
-      business_profile: { product_description: "Serviço de reboque sob demanda" },
+      business_profile: { product_description: "Serviço de reboque sob demanda", mcc: "7549" },
       individual: {
         first_name: first,
         last_name: last,
@@ -161,28 +156,27 @@ export async function POST(request: Request) {
           country,
         },
         id_number: cpf,
+        political_exposure: "none",
       },
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
 
-    if (!isTestKey) {
-      const routingNumber = `${bankCode}${branchCode}`;
-      const bankTok = await stripe.tokens.create({
-        bank_account: {
-          country: bankCountry,
-          currency,
-          account_holder_name: fullName,
-          account_holder_type: "individual",
-          routing_number: routingNumber,
-          account_number: accountNumber,
-        },
-      });
+    const routingNumber = `${bankCode}${branchCode}`;
+    const bankTok = await stripe.tokens.create({
+      bank_account: {
+        country: bankCountry,
+        currency,
+        account_holder_name: fullName,
+        account_holder_type: "individual",
+        routing_number: routingNumber,
+        account_number: accountNumber,
+      },
+    });
 
-      await stripe.accounts.createExternalAccount(accountId, {
-        external_account: bankTok.id,
-        default_for_currency: true,
-      });
-    }
+    await stripe.accounts.createExternalAccount(accountId, {
+      external_account: bankTok.id,
+      default_for_currency: true,
+    });
 
     return NextResponse.json({ ok: true, account_id: accountId }, { status: 200 });
   } catch (e) {

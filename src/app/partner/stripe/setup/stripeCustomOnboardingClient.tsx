@@ -25,10 +25,6 @@ type SubmitResponse = {
   error?: string;
 };
 
-type EnvResponse = {
-  stripe?: { mode?: "test" | "live" | null };
-};
-
 function digitsOnly(value: string) {
   return value.replace(/\D+/g, "");
 }
@@ -80,7 +76,6 @@ export function StripeCustomOnboardingClient(props: {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isTestMode, setIsTestMode] = useState<boolean | null>(null);
 
   const existingAccountId = props.initial.stripe_account_id;
 
@@ -91,12 +86,10 @@ export function StripeCustomOnboardingClient(props: {
     if (!digitsOnly(phone).trim()) return false;
     if (!digitsOnly(dobDay) || !digitsOnly(dobMonth) || !digitsOnly(dobYear)) return false;
     if (!addrLine1.trim() || !addrCity.trim() || !addrState.trim() || !digitsOnly(addrPostal).trim()) return false;
-    if (isTestMode !== true) {
-      if (!digitsOnly(bankCode).trim() || !digitsOnly(branchCode).trim() || !digitsOnly(accountNumber).trim()) return false;
-    }
+    if (!digitsOnly(bankCode).trim() || !digitsOnly(branchCode).trim() || !digitsOnly(accountNumber).trim()) return false;
     if (!acceptTos) return false;
     return true;
-  }, [acceptTos, accountNumber, addrCity, addrLine1, addrPostal, addrState, bankCode, branchCode, cpf, dobDay, dobMonth, dobYear, email, fullName, isTestMode, phone]);
+  }, [acceptTos, accountNumber, addrCity, addrLine1, addrPostal, addrState, bankCode, branchCode, cpf, dobDay, dobMonth, dobYear, email, fullName, phone]);
 
   async function loadStatus() {
     setIsLoadingStatus(true);
@@ -116,23 +109,6 @@ export function StripeCustomOnboardingClient(props: {
 
   useEffect(() => {
     void loadStatus();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function run() {
-      try {
-        const res = await fetch("/api/health/env", { cache: "no-store" });
-        const json = (await res.json()) as EnvResponse;
-        if (!cancelled) setIsTestMode(json.stripe?.mode === "test");
-      } catch {
-        if (!cancelled) setIsTestMode(null);
-      }
-    }
-    void run();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   async function submit() {
@@ -191,12 +167,6 @@ export function StripeCustomOnboardingClient(props: {
         <p className="mt-2 text-sm text-zinc-700">
           Preencha os dados para criar e configurar sua conta conectada.
         </p>
-        {isTestMode ? (
-          <div className="mt-3 rounded-md border bg-zinc-50 p-3 text-sm text-zinc-700">
-            Modo teste detectado. A Stripe pode rejeitar dados bancários reais no ambiente de teste.
-            Você pode preencher só os dados pessoais/endereço para continuar.
-          </div>
-        ) : null}
         {existingAccountId ? (
           <div className="mt-2 text-xs text-zinc-600">Conta atual: {existingAccountId}</div>
         ) : null}
@@ -296,11 +266,6 @@ export function StripeCustomOnboardingClient(props: {
         <p className="mt-2 text-xs text-zinc-600">
           Use o código do banco (COMPE) com 3 dígitos. Ex: 001 (Banco do Brasil), 237 (Bradesco), 341 (Itaú), 033 (Santander), 104 (Caixa), 260 (Nubank), 077 (Inter).
         </p>
-        {isTestMode ? (
-          <p className="mt-2 text-xs text-zinc-600">
-            No modo teste, esta seção pode ser ignorada. Em produção, ela é necessária para saque.
-          </p>
-        ) : null}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1">
             <div className="text-sm font-medium">Código do banco</div>
