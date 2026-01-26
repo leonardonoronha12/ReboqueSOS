@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
+import { getOptionalEnvAny } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { ProposalFormClient } from "./proposalFormClient";
@@ -42,6 +43,9 @@ export default async function PartnerRequestPage({
     .eq("partner_id", user.id)
     .maybeSingle();
 
+  const supabaseUrl = getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"]) ?? null;
+  const supabaseAnonKey = getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"]) ?? null;
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-6">
@@ -66,7 +70,12 @@ export default async function PartnerRequestPage({
         </div>
       </div>
 
-      <ProposalFormClient requestId={reqRow.id} initialProposal={myProposal ?? null} />
+      <ProposalFormClient
+        requestId={reqRow.id}
+        initialProposal={myProposal ?? null}
+        supabaseUrl={supabaseUrl}
+        supabaseAnonKey={supabaseAnonKey}
+      />
     </div>
   );
 }

@@ -16,6 +16,8 @@ type Proposal = {
 export function ProposalFormClient(props: {
   requestId: string;
   initialProposal: Proposal | null;
+  supabaseUrl: string | null;
+  supabaseAnonKey: string | null;
 }) {
   const router = useRouter();
   const [valor, setValor] = useState(String(props.initialProposal?.valor ?? ""));
@@ -27,7 +29,9 @@ export function ProposalFormClient(props: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
+    if (!props.supabaseUrl || !props.supabaseAnonKey) return;
+
+    const supabase = createSupabaseBrowserClient({ url: props.supabaseUrl, anonKey: props.supabaseAnonKey });
     const channel = supabase
       .channel(`my_proposal:${props.requestId}`)
       .on(
@@ -44,7 +48,7 @@ export function ProposalFormClient(props: {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [props.requestId, router]);
+  }, [props.requestId, props.supabaseAnonKey, props.supabaseUrl, router]);
 
   async function submit() {
     setIsSubmitting(true);
@@ -132,4 +136,3 @@ export function ProposalFormClient(props: {
     </div>
   );
 }
-

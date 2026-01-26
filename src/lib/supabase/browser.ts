@@ -1,11 +1,14 @@
 import { createBrowserClient } from "@supabase/ssr";
 
-import { getRequiredEnv } from "@/lib/env";
+import { getOptionalEnvAny } from "@/lib/env";
 
-export function createSupabaseBrowserClient() {
-  return createBrowserClient(
-    getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  );
+export function createSupabaseBrowserClient(input?: { url?: string; anonKey?: string }) {
+  const url = input?.url ?? getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_URL"]);
+  const anonKey = input?.anonKey ?? getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_ANON_KEY"]);
+
+  if (!url || !anonKey) {
+    throw new Error("Supabase não configurado no navegador.");
+  }
+
+  return createBrowserClient(url, anonKey);
 }
-

@@ -11,3 +11,18 @@ export function getOptionalEnv(name: string): string | undefined {
   return value || undefined;
 }
 
+export function getRequiredEnvAny(names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  throw new Error(`Missing env: ${names.join(" | ")}`);
+}
+
+export function getOptionalEnvAny(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return undefined;
+}
