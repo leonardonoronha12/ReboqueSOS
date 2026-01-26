@@ -24,8 +24,20 @@ export async function POST(request: Request) {
   const valor = Number(body.valor);
   const etaMinutes = Number(body.etaMinutes);
 
-  if (!requestId || !Number.isFinite(valor) || !Number.isFinite(etaMinutes)) {
+  if (!requestId) {
     return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  }
+
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return NextResponse.json({ error: "Informe um valor maior que zero." }, { status: 400 });
+  }
+
+  if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) {
+    return NextResponse.json({ error: "Informe um ETA (min) maior que zero." }, { status: 400 });
+  }
+
+  if (!Number.isInteger(etaMinutes)) {
+    return NextResponse.json({ error: "ETA (min) deve ser um número inteiro." }, { status: 400 });
   }
 
   const supabaseAdmin = createSupabaseAdminClient();
@@ -58,7 +70,16 @@ export async function POST(request: Request) {
     .select("id")
     .single();
 
-  if (propErr) return NextResponse.json({ error: propErr.message }, { status: 500 });
+  if (propErr) {
+    const msg = propErr.message || "Falha ao enviar proposta.";
+    if (msg.includes("tow_proposals_eta_minutes_check")) {
+      return NextResponse.json({ error: "Informe um ETA (min) maior que zero." }, { status: 400 });
+    }
+    if (msg.includes("tow_proposals_valor_check")) {
+      return NextResponse.json({ error: "Informe um valor maior que zero." }, { status: 400 });
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 
   await supabaseAdmin
     .from("tow_requests")
@@ -68,4 +89,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ id: proposal.id }, { status: 201 });
 }
-

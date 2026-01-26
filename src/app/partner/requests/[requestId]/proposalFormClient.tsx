@@ -54,24 +54,36 @@ export function ProposalFormClient(props: {
     setIsSubmitting(true);
     setError(null);
     try {
+      const valorNum = Number(valor);
+      const etaNum = Number(etaMinutes);
+      if (!Number.isFinite(valorNum) || valorNum <= 0) {
+        throw new Error("Informe um valor maior que zero.");
+      }
+      if (!Number.isFinite(etaNum) || etaNum <= 0) {
+        throw new Error("Informe um ETA (min) maior que zero.");
+      }
+      if (!Number.isInteger(etaNum)) {
+        throw new Error("ETA (min) deve ser um número inteiro.");
+      }
+
       const res = await fetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requestId: props.requestId,
-          valor: Number(valor),
-          etaMinutes: Number(etaMinutes),
+          valor: valorNum,
+          etaMinutes: etaNum,
         }),
       });
       const json = (await res.json()) as { id?: string; error?: string };
       if (!res.ok) throw new Error(json.error || "Falha ao enviar proposta.");
       setProposal(
         proposal
-          ? { ...proposal, valor: Number(valor), eta_minutes: Number(etaMinutes) }
+          ? { ...proposal, valor: valorNum, eta_minutes: etaNum }
           : {
               id: json.id!,
-              valor: Number(valor),
-              eta_minutes: Number(etaMinutes),
+              valor: valorNum,
+              eta_minutes: etaNum,
               accepted: false,
               created_at: new Date().toISOString(),
             },
@@ -121,6 +133,8 @@ export function ProposalFormClient(props: {
             value={etaMinutes}
             onChange={(e) => setEtaMinutes(e.target.value)}
             inputMode="numeric"
+            min={1}
+            step={1}
             placeholder="20"
           />
         </label>
