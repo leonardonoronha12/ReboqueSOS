@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { stripePromise } from "@/lib/stripe/client";
 
-function CheckoutForm(props: { options: StripePaymentElementOptions }) {
+function CheckoutForm(props: { options: StripePaymentElementOptions; onSubmitted: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +23,7 @@ function CheckoutForm(props: { options: StripePaymentElementOptions }) {
       redirect: "if_required",
     });
     if (stripeError) setError(stripeError.message ?? "Falha no pagamento.");
+    if (!stripeError) props.onSubmitted();
     setIsSubmitting(false);
   }
 
@@ -48,6 +49,7 @@ function CheckoutForm(props: { options: StripePaymentElementOptions }) {
 export function PaymentCheckoutClient(props: { requestId: string }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "submitted" | "paid">("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +69,34 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
       cancelled = true;
     };
   }, [props.requestId]);
+
+  useEffect(() => {
+    if (status !== "submitted") return;
+    let cancelled = false;
+    let tries = 0;
+
+    async function tick() {
+      tries += 1;
+      try {
+        const res = await fetch(`/api/public/requests/${props.requestId}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { request?: { status?: string } };
+        if (json.request?.status === "PAGO") {
+          if (!cancelled) setStatus("paid");
+          return;
+        }
+      } finally {
+        if (!cancelled && tries < 30) {
+          window.setTimeout(() => void tick(), 1500);
+        }
+      }
+    }
+
+    void tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.requestId, status]);
 
   const options = useMemo<StripePaymentElementOptions>(() => {
     return {
@@ -92,8 +122,23 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
 
   return (
     <div className="rounded-xl border bg-white p-6">
+      {status === "submitted" ? (
+        <div className="mb-4 rounded-md border bg-zinc-50 p-3 text-sm text-zinc-700">
+          Pagamento enviado. Confirmando...
+        </div>
+      ) : null}
+      {status === "paid" ? (
+        <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          Pagamento confirmado. Obrigado!
+          <div className="mt-3">
+            <a className="rounded-md border bg-white px-3 py-2 text-sm font-semibold" href={`/requests/${props.requestId}`}>
+              Voltar ao pedido
+            </a>
+          </div>
+        </div>
+      ) : null}
       <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe" } }}>
-        <CheckoutForm options={options} />
+        <CheckoutForm options={options} onSubmitted={() => setStatus("submitted")} />
       </Elements>
     </div>
   );
