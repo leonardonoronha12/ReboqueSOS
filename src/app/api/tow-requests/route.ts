@@ -99,20 +99,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: reqErr.message }, { status: 500 });
     }
 
-    const { data: partners, error: partnersErr } = await supabaseAdmin
-      .from("tow_partners")
-      .select("id,empresa_nome,cidade,lat,lng,whatsapp_number,ativo")
-      .eq("ativo", true)
-      .eq("cidade", cidade)
-      .not("whatsapp_number", "is", null)
-      .limit(50);
+    const origin = new URL(request.url).origin;
+    const fetchPartners = async (filterCity: boolean) => {
+      const q = supabaseAdmin
+        .from("tow_partners")
+        .select("id,empresa_nome,cidade,lat,lng,whatsapp_number,ativo")
+        .eq("ativo", true)
+        .not("whatsapp_number", "is", null)
+        .limit(100);
+      return filterCity ? q.eq("cidade", cidade) : q;
+    };
 
-    if (partnersErr) {
-      return NextResponse.json({ id: reqRow.id }, { status: 201 });
+    const { data: partnersByCity, error: partnersByCityErr } = await fetchPartners(true);
+    let partnersToUse = partnersByCityErr ? [] : (partnersByCity ?? []);
+    if (partnersToUse.length === 0) {
+      const { data: partnersAny, error: partnersAnyErr } = await fetchPartners(false);
+      partnersToUse = partnersAnyErr ? [] : (partnersAny ?? []);
     }
 
-    const origin = new URL(request.url).origin;
-    const nearby = (partners ?? [])
+    const nearby = partnersToUse
       .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
       .map((p) => ({
         ...p,
@@ -122,9 +127,10 @@ export async function POST(request: Request) {
         ),
       }))
       .sort((a, b) => a.distanceKm - b.distanceKm)
+      .filter((p) => p.distanceKm <= 60)
       .slice(0, 3);
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       nearby.map((p) =>
         sendWhatsAppMessage({
           to: String(p.whatsapp_number),
@@ -140,7 +146,10 @@ export async function POST(request: Request) {
       ),
     );
 
-    return NextResponse.json({ id: reqRow.id }, { status: 201 });
+    const sent = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.length - sent;
+
+    return NextResponse.json({ id: reqRow.id, whatsapp: { attempted: results.length, sent, failed } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erro interno." }, { status: 500 });
   }

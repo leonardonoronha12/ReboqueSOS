@@ -2,6 +2,19 @@ import { getRequiredEnv, getOptionalEnv } from "@/lib/env";
 
 export type WhatsAppProvider = "twilio" | "zapi" | "custom";
 
+function normalizeWhatsAppToE164(input: string) {
+  const raw = input.trim().replace(/^whatsapp:/, "");
+  const cleaned = raw.replace(/[\s()-]/g, "");
+  if (!cleaned) return "";
+  if (cleaned.startsWith("+")) return cleaned;
+  if (/^\d+$/.test(cleaned)) {
+    if (cleaned.startsWith("55")) return `+${cleaned}`;
+    if (cleaned.length === 10 || cleaned.length === 11) return `+55${cleaned}`;
+    return `+${cleaned}`;
+  }
+  return raw;
+}
+
 export async function sendWhatsAppMessage(input: { to: string; body: string }) {
   const provider = (getOptionalEnv("WHATSAPP_PROVIDER") ?? "custom") as WhatsAppProvider;
 
@@ -11,7 +24,9 @@ export async function sendWhatsAppMessage(input: { to: string; body: string }) {
     const from = getRequiredEnv("TWILIO_WHATSAPP_FROM");
     const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     const form = new URLSearchParams();
-    form.set("To", input.to.startsWith("whatsapp:") ? input.to : `whatsapp:${input.to}`);
+    const to = normalizeWhatsAppToE164(input.to);
+    if (!to) throw new Error("Twilio WhatsApp error: Missing destination number.");
+    form.set("To", `whatsapp:${to}`);
     form.set("From", from.startsWith("whatsapp:") ? from : `whatsapp:${from}`);
     form.set("Body", input.body);
 
