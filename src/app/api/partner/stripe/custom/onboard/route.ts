@@ -165,6 +165,7 @@ export async function POST(request: Request) {
         },
         id_number: cpf,
         political_exposure: "none",
+        verification: stripeTestMode ? { document: { front: "file_identity_document_success" } } : undefined,
       },
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
