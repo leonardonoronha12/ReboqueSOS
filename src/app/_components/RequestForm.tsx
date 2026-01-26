@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 
 import { Sheet } from "@/components/ui/Sheet";
 
@@ -29,6 +29,8 @@ type GoogleLike = {
     };
   };
 };
+
+type Tow = { id: string; pos: Coords; target: Coords; speed: number };
 
 async function readJsonMaybe<T>(res: Response): Promise<T | null> {
   const text = await res.text();
@@ -61,6 +63,16 @@ function formatBrPhone(raw: string) {
   return `(${ddd}) ${a}-${b}`;
 }
 
+function rand(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
+
+function randomPointAround(center: Coords, radiusDeg: number): Coords {
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random()) * radiusDeg;
+  return { lat: center.lat + Math.cos(angle) * r, lng: center.lng + Math.sin(angle) * r };
+}
+
 export function RequestForm() {
   const router = useRouter();
   const [coords, setCoords] = useState<Coords | null>(null);
@@ -87,6 +99,76 @@ export function RequestForm() {
     language: "pt-BR",
     region: "BR",
   });
+
+  const mapCenter = useMemo<Coords>(() => coords ?? { lat: -22.8097, lng: -43.0619 }, [coords]);
+  const mapCenterRef = useRef<Coords>(mapCenter);
+
+  useEffect(() => {
+    mapCenterRef.current = mapCenter;
+  }, [mapCenter]);
+
+  const [tows, setTows] = useState<Tow[]>([]);
+
+  useEffect(() => {
+    if (!apiKey || !isGoogleMapsLoaded) {
+      setTows([]);
+      return;
+    }
+    const center = mapCenterRef.current;
+    setTows(
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `tow-${i + 1}`,
+        pos: randomPointAround(center, 0.012),
+        target: randomPointAround(center, 0.012),
+        speed: rand(0.00008, 0.00018),
+      })),
+    );
+  }, [apiKey, isGoogleMapsLoaded, mapCenter.lat, mapCenter.lng]);
+
+  useEffect(() => {
+    if (!apiKey || !isGoogleMapsLoaded) return;
+
+    const id = window.setInterval(() => {
+      setTows((prev) =>
+        prev.map((t) => {
+          const dx = t.target.lat - t.pos.lat;
+          const dy = t.target.lng - t.pos.lng;
+          const dist = Math.hypot(dx, dy);
+          if (!Number.isFinite(dist) || dist < 0.00006) {
+            return { ...t, target: randomPointAround(mapCenterRef.current, 0.013) };
+          }
+          const step = t.speed;
+          const ratio = dist <= step ? 1 : step / dist;
+          return {
+            ...t,
+            pos: { lat: t.pos.lat + dx * ratio, lng: t.pos.lng + dy * ratio },
+          };
+        }),
+      );
+    }, 200);
+
+    return () => window.clearInterval(id);
+  }, [apiKey, isGoogleMapsLoaded]);
+
+  const towIcon = useMemo<google.maps.Icon | undefined>(() => {
+    if (!isGoogleMapsLoaded) return undefined;
+    const g = (window as unknown as { google?: typeof google }).google;
+    if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
+      `<rect x="6" y="24" width="30" height="16" rx="4" fill="#111827"/>` +
+      `<rect x="36" y="28" width="14" height="12" rx="3" fill="#111827"/>` +
+      `<rect x="10" y="28" width="10" height="6" rx="2" fill="#F59E0B"/>` +
+      `<circle cx="18" cy="44" r="6" fill="#111827"/><circle cx="18" cy="44" r="3" fill="#E5E7EB"/>` +
+      `<circle cx="42" cy="44" r="6" fill="#111827"/><circle cx="42" cy="44" r="3" fill="#E5E7EB"/>` +
+      `</svg>`;
+    const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    return {
+      url,
+      scaledSize: new g.maps.Size(28, 28),
+      anchor: new g.maps.Point(14, 14),
+    };
+  }, [isGoogleMapsLoaded]);
 
   useEffect(() => {
     let alive = true;
@@ -408,6 +490,26 @@ export function RequestForm() {
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-bold text-brand-black">Reboques próximos</div>
           {isLoadingNearby ? <div className="text-xs text-brand-text2">Carregando...</div> : null}
+        </div>
+        <div className="mt-3 h-[220px] overflow-hidden rounded-2xl border border-brand-border/20 bg-zinc-50">
+          {apiKey && isGoogleMapsLoaded ? (
+            <GoogleMap
+              center={mapCenter}
+              zoom={14}
+              mapContainerStyle={{ width: "100%", height: "100%" }}
+              options={{
+                disableDefaultUI: true,
+                clickableIcons: false,
+                gestureHandling: "none",
+                keyboardShortcuts: false,
+              }}
+            >
+              {coords ? <MarkerF position={coords} /> : null}
+              {tows.map((t) => (
+                <MarkerF key={t.id} position={t.pos} icon={towIcon} />
+              ))}
+            </GoogleMap>
+          ) : null}
         </div>
         <div className="mt-3 rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
           <span className="text-brand-black">{label}</span> reboques próximos ativos para atender seu chamado agora
