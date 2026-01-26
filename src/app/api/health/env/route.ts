@@ -15,6 +15,8 @@ export async function GET() {
   const supabaseUrlKeys = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"];
   const supabaseAnonKeys = ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"];
   const whatsappProvider = process.env.WHATSAPP_PROVIDER ?? "custom";
+  const stripeKey = process.env.STRIPE_SECRET_KEY ?? null;
+  const stripeMode = stripeKey?.startsWith("sk_test_") ? "test" : stripeKey?.startsWith("sk_live_") ? "live" : null;
 
   return NextResponse.json(
     {
@@ -44,6 +46,7 @@ export async function GET() {
         secret_key_configured: pickSet("STRIPE_SECRET_KEY"),
         publishable_key_configured: pickSet("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
         webhook_secret_configured: pickSet("STRIPE_WEBHOOK_SECRET"),
+        mode: stripeMode,
       },
     },
     { status: 200 },

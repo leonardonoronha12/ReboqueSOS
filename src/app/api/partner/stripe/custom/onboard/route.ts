@@ -3,10 +3,25 @@ import { NextResponse } from "next/server";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getRequiredEnv } from "@/lib/env";
 import { getStripeServer } from "@/lib/stripe/server";
 
 function digitsOnly(value: string) {
   return value.replace(/\D+/g, "");
+}
+
+function normalizeBankCode(raw: string) {
+  const digits = digitsOnly(raw);
+  if (!digits) return "";
+  const last3 = digits.slice(-3);
+  return last3.padStart(3, "0");
+}
+
+function normalizeBranchCode(raw: string) {
+  const digits = digitsOnly(raw);
+  if (!digits) return "";
+  const last4 = digits.slice(-4);
+  return last4.padStart(4, "0");
 }
 
 function splitName(fullName: string) {
@@ -64,9 +79,11 @@ export async function POST(request: Request) {
 
     const bankCountry = String(body.bank?.country ?? "BR").trim() || "BR";
     const currency = String(body.bank?.currency ?? "brl").trim().toLowerCase() || "brl";
-    const bankCode = digitsOnly(String(body.bank?.bank_code ?? ""));
-    const branchCode = digitsOnly(String(body.bank?.branch_code ?? ""));
+    const bankCode = normalizeBankCode(String(body.bank?.bank_code ?? ""));
+    const branchCode = normalizeBranchCode(String(body.bank?.branch_code ?? ""));
     const accountNumber = digitsOnly(String(body.bank?.account_number ?? ""));
+
+    const isTestKey = getRequiredEnv("STRIPE_SECRET_KEY").startsWith("sk_test_");
 
     const acceptTos = Boolean(body.accept_tos);
     if (!acceptTos) return NextResponse.json({ error: "Aceite os termos para continuar." }, { status: 400 });
@@ -80,7 +97,9 @@ export async function POST(request: Request) {
     if (!Number.isInteger(dobYear) || dobYear < 1900) return NextResponse.json({ error: "Data de nascimento inválida." }, { status: 400 });
 
     if (!line1 || !city || !state || postal.length < 8) return NextResponse.json({ error: "Endereço inválido." }, { status: 400 });
-    if (!bankCode || !branchCode || !accountNumber) return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
+    if (!isTestKey && (!bankCode || !branchCode || !accountNumber)) {
+      return NextResponse.json({ error: "Conta bancária inválida." }, { status: 400 });
+    }
 
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: partner, error: partnerErr } = await supabaseAdmin
@@ -131,7 +150,7 @@ export async function POST(request: Request) {
         first_name: first,
         last_name: last,
         email,
-        phone: `+55${phone}`,
+        phone: phone.startsWith("55") && phone.length > 10 ? `+${phone}` : `+55${phone}`,
         dob: { day: dobDay, month: dobMonth, year: dobYear },
         address: {
           line1,
@@ -146,22 +165,24 @@ export async function POST(request: Request) {
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
 
-    const routingNumber = `${bankCode}${branchCode}`;
-    const bankTok = await stripe.tokens.create({
-      bank_account: {
-        country: bankCountry,
-        currency,
-        account_holder_name: fullName,
-        account_holder_type: "individual",
-        routing_number: routingNumber,
-        account_number: accountNumber,
-      },
-    });
+    if (!isTestKey) {
+      const routingNumber = `${bankCode}${branchCode}`;
+      const bankTok = await stripe.tokens.create({
+        bank_account: {
+          country: bankCountry,
+          currency,
+          account_holder_name: fullName,
+          account_holder_type: "individual",
+          routing_number: routingNumber,
+          account_number: accountNumber,
+        },
+      });
 
-    await stripe.accounts.createExternalAccount(accountId, {
-      external_account: bankTok.id,
-      default_for_currency: true,
-    });
+      await stripe.accounts.createExternalAccount(accountId, {
+        external_account: bankTok.id,
+        default_for_currency: true,
+      });
+    }
 
     return NextResponse.json({ ok: true, account_id: accountId }, { status: 200 });
   } catch (e) {
