@@ -30,6 +30,16 @@ type GoogleLike = {
   };
 };
 
+async function readJsonMaybe<T>(res: Response): Promise<T | null> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 function formatBrPhone(raw: string) {
   const digits = raw.replace(/\D/g, "").slice(0, 11);
   const ddd = digits.slice(0, 2);
@@ -183,8 +193,9 @@ export function RequestForm() {
           only_count: "1",
         });
         const res = await fetch(`/api/partners/nearby?${qs.toString()}`);
-        const json = (await res.json()) as { count_nearby?: number };
-        if (!cancelled) setNearbyCount(Number.isFinite(json.count_nearby) ? Number(json.count_nearby) : 0);
+        const json = await readJsonMaybe<{ count_nearby?: number }>(res);
+        const count = json?.count_nearby;
+        if (!cancelled) setNearbyCount(Number.isFinite(count) ? Number(count) : 0);
       } finally {
         if (!cancelled) setIsLoadingNearby(false);
       }
@@ -234,12 +245,14 @@ export function RequestForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address }),
     });
-    const json = (await res.json()) as {
+    const json = await readJsonMaybe<{
       location?: { lat: number; lng: number };
       formattedAddress?: string | null;
       error?: string;
-    };
-    if (!res.ok || !json.location) throw new Error(json.error || "Não foi possível localizar o endereço.");
+    }>(res);
+    if (!res.ok || !json?.location) {
+      throw new Error(json?.error || `Não foi possível localizar o endereço. (HTTP ${res.status})`);
+    }
     return {
       coords: { lat: json.location.lat, lng: json.location.lng },
       address: String(json.formattedAddress ?? address),
@@ -282,9 +295,9 @@ export function RequestForm() {
         }),
       });
 
-      const json = (await res.json()) as { id?: string; error?: string };
-      if (!res.ok) throw new Error(json.error || "Falha ao solicitar reboque.");
-      if (!json.id) throw new Error("Resposta inválida.");
+      const json = await readJsonMaybe<{ id?: string; error?: string }>(res);
+      if (!res.ok) throw new Error(json?.error || `Falha ao solicitar reboque. (HTTP ${res.status})`);
+      if (!json?.id) throw new Error("Resposta inválida.");
 
       router.push(`/requests/${json.id}`);
     } catch (e) {
@@ -375,12 +388,12 @@ export function RequestForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: p.description }),
       });
-      const json = (await res.json()) as {
+      const json = await readJsonMaybe<{
         location?: { lat: number; lng: number };
         formattedAddress?: string | null;
         error?: string;
-      };
-      if (!res.ok || !json.location) throw new Error(json.error || "Não foi possível localizar o endereço.");
+      }>(res);
+      if (!res.ok || !json?.location) throw new Error(json?.error || `Não foi possível localizar o endereço. (HTTP ${res.status})`);
       setCoords({ lat: json.location.lat, lng: json.location.lng });
       setCoordsSource("address");
       setEndereco(String(json.formattedAddress ?? p.description));
