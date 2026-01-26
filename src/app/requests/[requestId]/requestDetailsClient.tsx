@@ -80,8 +80,7 @@ export function RequestDetailsClient(props: {
       const res = await fetch(`/api/proposals/${proposalId}/accept`, { method: "POST" });
       const json = (await res.json()) as { tripId?: string | null; error?: string };
       if (!res.ok) throw new Error(json.error || "Falha ao aceitar.");
-      if (json.tripId) router.push(`/trips/${json.tripId}`);
-      router.refresh();
+      router.push(`/payments/${props.requestId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao aceitar.");
     } finally {
@@ -125,7 +124,7 @@ export function RequestDetailsClient(props: {
       <div className="rounded-xl border bg-white p-6">
         <h2 className="text-lg font-semibold">Propostas</h2>
         <p className="mt-1 text-sm text-zinc-700">
-          Aguarde as respostas dos reboques próximos. Ao aceitar, o rastreamento ao vivo inicia.
+          Aguarde as respostas dos reboques próximos. Ao aceitar, você será levado ao pagamento.
         </p>
 
         {error ? (
