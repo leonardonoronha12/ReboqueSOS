@@ -3,6 +3,7 @@
 import { Elements } from "@stripe/react-stripe-js";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import type { StripePaymentElementOptions } from "@stripe/stripe-js";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { stripePromise } from "@/lib/stripe/client";
@@ -57,6 +58,7 @@ function CheckoutForm(props: { options: StripePaymentElementOptions; onSubmitted
 }
 
 export function PaymentCheckoutClient(props: { requestId: string }) {
+  const router = useRouter();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "submitted" | "paid">("idle");
@@ -108,6 +110,14 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
       cancelled = true;
     };
   }, [props.requestId, status]);
+
+  useEffect(() => {
+    if (status !== "paid") return;
+    const t = window.setTimeout(() => {
+      router.replace(`/requests/${props.requestId}`);
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [props.requestId, router, status]);
 
   const options = useMemo<StripePaymentElementOptions>(() => {
     return {
