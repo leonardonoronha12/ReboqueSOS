@@ -17,7 +17,11 @@ export async function createSupabaseServerClient() {
         },
         setAll(cookiesToSet) {
           for (const cookie of cookiesToSet) {
-            cookieStore.set(cookie);
+            try {
+              cookieStore.set(cookie);
+            } catch {
+              return;
+            }
           }
         },
       },
