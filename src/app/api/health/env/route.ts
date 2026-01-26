@@ -14,6 +14,7 @@ function pickFirstSet(names: string[]) {
 export async function GET() {
   const supabaseUrlKeys = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"];
   const supabaseAnonKeys = ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"];
+  const whatsappProvider = process.env.WHATSAPP_PROVIDER ?? "custom";
 
   return NextResponse.json(
     {
@@ -33,8 +34,13 @@ export async function GET() {
       google_maps: {
         api_key_configured: pickSet("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY") || pickSet("GOOGLE_MAPS_API_KEY"),
       },
+      whatsapp: {
+        provider: whatsappProvider,
+        custom_configured: pickSet("WHATSAPP_WEBHOOK_URL"),
+        twilio_configured: pickSet("TWILIO_ACCOUNT_SID") && pickSet("TWILIO_AUTH_TOKEN") && pickSet("TWILIO_WHATSAPP_FROM"),
+        zapi_configured: pickSet("ZAPI_BASE_URL") && pickSet("ZAPI_TOKEN") && pickSet("ZAPI_INSTANCE_ID"),
+      },
     },
     { status: 200 },
   );
 }
-

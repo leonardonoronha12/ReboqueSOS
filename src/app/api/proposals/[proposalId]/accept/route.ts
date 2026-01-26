@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/sendWhatsApp";
 
 export async function POST(
   request: Request,
@@ -23,7 +24,7 @@ export async function POST(
 
   const { data: reqRow, error: reqErr } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,cliente_id,status")
+    .select("id,cliente_id,status,local_cliente,cidade,telefone_cliente,modelo_veiculo")
     .eq("id", proposal.request_id)
     .maybeSingle();
 
@@ -83,6 +84,28 @@ export async function POST(
 
   if (tripErr) {
     return NextResponse.json({ error: tripErr.message }, { status: 500 });
+  }
+
+  const { data: partner } = await supabaseAdmin
+    .from("tow_partners")
+    .select("whatsapp_number,empresa_nome")
+    .eq("id", proposal.partner_id)
+    .maybeSingle();
+
+  if (partner?.whatsapp_number) {
+    const origin = new URL(request.url).origin;
+    const acceptLink = `${origin}/partner/requests/${proposal.request_id}`;
+    const body =
+      `✅ Sua proposta foi aceita no ReboqueSOS\n` +
+      `📍 Local: ${reqRow.local_cliente ?? "—"}\n` +
+      `🏙️ Cidade: ${reqRow.cidade ?? "—"}\n` +
+      `🚗 Veículo: ${reqRow.modelo_veiculo ?? "—"}\n` +
+      `📞 Telefone: ${reqRow.telefone_cliente ?? "—"}\n` +
+      `💰 Valor: R$ ${proposal.valor}\n` +
+      `⏱️ ETA: ${proposal.eta_minutes} min\n` +
+      `🔗 Abrir no painel: ${acceptLink}`;
+
+    await Promise.allSettled([sendWhatsAppMessage({ to: String(partner.whatsapp_number), body })]);
   }
 
   return NextResponse.json({ tripId: trip.id }, { status: 200 });
