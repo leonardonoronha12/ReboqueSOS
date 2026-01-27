@@ -594,6 +594,46 @@ export function PartnerDashboardClient(props: {
     };
   }, [ativo, props.cidade]);
 
+  useEffect(() => {
+    if (!ativo) return;
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" });
+        const json = await readJsonResponse<{ tripId?: string | null; requestId?: string | null }>(res);
+        if (!res.ok) return;
+        const tripId = json?.tripId ? String(json.tripId) : "";
+        if (!tripId) return;
+        const storageKey = "reboquesos.partner.redirectedTripId";
+        const last = (() => {
+          try {
+            return window.sessionStorage.getItem(storageKey) ?? "";
+          } catch {
+            return "";
+          }
+        })();
+        if (last === tripId) return;
+        try {
+          window.sessionStorage.setItem(storageKey, tripId);
+        } catch {
+          return;
+        }
+        window.location.href = `/trips/${encodeURIComponent(tripId)}`;
+      } catch {
+        return;
+      }
+    }
+
+    void tick();
+    const id = window.setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [ativo]);
+
   async function loadBalance() {
     setBalanceError(null);
     setIsLoadingBalance(true);

@@ -30,6 +30,11 @@ export default async function TripPage({
     .eq("id", trip.request_id)
     .maybeSingle();
 
+  const pickup =
+    reqRow && typeof reqRow.lat === "number" && typeof reqRow.lng === "number" && Number.isFinite(reqRow.lat) && Number.isFinite(reqRow.lng)
+      ? { lat: reqRow.lat, lng: reqRow.lng }
+      : null;
+
   const { data: live } = await supabase
     .from("tow_live_location")
     .select("lat,lng,updated_at")
@@ -56,11 +61,11 @@ export default async function TripPage({
 
   return (
     <>
-      {reqRow ? (
+      {reqRow && pickup ? (
         <TripTrackingClient
           tripId={tripId}
           requestId={trip.request_id}
-          pickup={{ lat: reqRow.lat, lng: reqRow.lng }}
+          pickup={pickup}
           initialTowLocation={live ? { lat: live.lat, lng: live.lng } : null}
           pickupLabel={reqRow.local_cliente}
           partner={{
@@ -71,7 +76,13 @@ export default async function TripPage({
         />
       ) : (
         <div className="rounded-xl border bg-white p-6">
-          <p className="text-sm text-zinc-700">Sem dados do pedido.</p>
+          <h1 className="text-xl font-semibold">Rastreamento</h1>
+          <p className="mt-2 text-sm text-zinc-700">Não foi possível carregar as coordenadas do pedido.</p>
+          <div className="mt-4">
+            <a className="rounded-md border px-3 py-2 text-sm font-semibold" href={`/requests/${trip.request_id}`}>
+              Voltar ao pedido
+            </a>
+          </div>
         </div>
       )}
     </>

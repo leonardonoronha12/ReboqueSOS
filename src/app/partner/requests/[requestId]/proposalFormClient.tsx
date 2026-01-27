@@ -50,6 +50,32 @@ export function ProposalFormClient(props: {
     };
   }, [props.requestId, props.supabaseAnonKey, props.supabaseUrl, router]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { tripId?: string | null; requestId?: string | null };
+        const tripId = json.tripId ? String(json.tripId) : "";
+        const requestId = json.requestId ? String(json.requestId) : "";
+        if (!tripId || requestId !== props.requestId) return;
+        window.location.href = `/trips/${encodeURIComponent(tripId)}`;
+      } catch {
+        return;
+      }
+    }
+
+    void tick();
+    const id = window.setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [props.requestId]);
+
   async function submit() {
     setIsSubmitting(true);
     setError(null);

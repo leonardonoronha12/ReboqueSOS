@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
       await supabaseAdmin
         .from("tow_trips")
-        .update({ status: "finalizado", updated_at: now })
+        .update({ status: "a_caminho", updated_at: now })
         .eq("request_id", requestId);
     }
   }
