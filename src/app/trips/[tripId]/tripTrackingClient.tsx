@@ -5,6 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Coords = { lat: number; lng: number };
 
+function towMarkerSvgDataUrl() {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
+    `<defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".25"/></filter></defs>` +
+    `<g filter="url(#s)">` +
+    `<circle cx="32" cy="32" r="26" fill="#ffc300" stroke="#ffffff" stroke-width="4"/>` +
+    `<path d="M18 36h20c2.2 0 4-1.8 4-4v-7h4.5c1 0 2 .5 2.6 1.4l3.3 4.6c.4.6.6 1.2.6 1.9V36h-3.2a5 5 0 0 1-9.6 0H26.8a5 5 0 0 1-9.6 0H18Zm6.6 5.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm22.8 0a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4ZM22 22h18v11H22V22Zm22 5v6h6.7l-2.7-3.7c-.2-.2-.4-.3-.7-.3H44Z" fill="#0b0b0d"/>` +
+    `</g></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 function formatBrl(cents: number | null) {
   if (!Number.isFinite(cents) || cents == null) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
@@ -67,6 +78,12 @@ export function TripTrackingClient(props: {
   const [cancelDone, setCancelDone] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const redirectInFlightRef = useRef(false);
+  const [canTransmit, setCanTransmit] = useState<boolean | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  const lastCoordsRef = useRef<Coords | null>(null);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -91,6 +108,75 @@ export function TripTrackingClient(props: {
       window.clearInterval(id);
     };
   }, [props.tripId]);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const res = await fetch(`/api/trips/${encodeURIComponent(props.tripId)}/can-transmit`, { cache: "no-store" });
+        const json = (await res.json()) as { canTransmit?: boolean };
+        if (!alive) return;
+        setCanTransmit(Boolean(json?.canTransmit));
+      } catch {
+        if (!alive) return;
+        setCanTransmit(false);
+      }
+    }
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [props.tripId]);
+
+  useEffect(() => {
+    if (!canTransmit) return;
+    if (!navigator.geolocation) {
+      setGpsError("GPS indisponível neste dispositivo.");
+      return;
+    }
+
+    async function send(coords: Coords) {
+      if (sendingRef.current) return;
+      sendingRef.current = true;
+      try {
+        await fetch(`/api/trips/${encodeURIComponent(props.tripId)}/location`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(coords),
+        });
+      } finally {
+        sendingRef.current = false;
+      }
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const coords = { lat, lng };
+        lastCoordsRef.current = coords;
+        setGpsError(null);
+        void send(coords);
+      },
+      () => {
+        setGpsError("Permissão de localização negada.");
+      },
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 },
+    );
+
+    intervalRef.current = window.setInterval(() => {
+      const coords = lastCoordsRef.current;
+      if (coords) void send(coords);
+    }, 3000);
+
+    return () => {
+      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (intervalRef.current != null) window.clearInterval(intervalRef.current);
+      watchIdRef.current = null;
+      intervalRef.current = null;
+    };
+  }, [canTransmit, props.tripId]);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded } = useJsApiLoader({
@@ -154,11 +240,10 @@ export function TripTrackingClient(props: {
   const partnerIcon = useMemo(() => {
     if (!towLocation) return undefined;
     if (!hasGoogleMaps) return undefined;
-    if (!props.partner.photoUrl) return undefined;
     const g = (window as unknown as { google?: typeof google }).google;
     if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
     return {
-      url: props.partner.photoUrl,
+      url: props.partner.photoUrl || towMarkerSvgDataUrl(),
       scaledSize: new g.maps.Size(52, 52),
       anchor: new g.maps.Point(26, 26),
     };
@@ -294,6 +379,16 @@ export function TripTrackingClient(props: {
               <div className="text-xs font-semibold text-brand-black/60">Reboque a caminho</div>
               <div className="mt-1 truncate text-base font-extrabold text-brand-black">{partnerLabel}</div>
               <div className="mt-1 text-xs text-brand-text2">{props.pickupLabel}</div>
+              {!towLocation ? (
+                <div className="mt-1 text-xs font-semibold text-brand-black/60">Aguardando GPS do reboque…</div>
+              ) : null}
+              {canTransmit ? (
+                gpsError ? (
+                  <div className="mt-1 text-xs font-semibold text-brand-red">{gpsError}</div>
+                ) : (
+                  <div className="mt-1 text-xs font-semibold text-brand-black/60">Transmitindo GPS…</div>
+                )
+              ) : null}
             </div>
             <div className="text-right">
               <div className="text-xs font-semibold text-brand-black/60">Chega em</div>
