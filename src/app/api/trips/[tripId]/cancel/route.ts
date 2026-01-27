@@ -89,14 +89,45 @@ export async function POST(
     canceled_after_seconds: elapsedSeconds,
   };
 
-  const tripUpd = await supabaseAdmin
-    .from("tow_trips")
-    .update(updatesTrip)
-    .eq("id", tripId);
+  const tripUpd = await supabaseAdmin.from("tow_trips").update(updatesTrip).eq("id", tripId);
 
   if (tripUpd.error) {
+    const msg = tripUpd.error.message || "Falha ao cancelar.";
+    const looksLikeSchemaCache =
+      msg.includes("schema cache") ||
+      msg.includes("Could not find the") ||
+      msg.includes("canceled_after_seconds") ||
+      msg.includes("canceled_fee_cents") ||
+      msg.includes("canceled_by_role") ||
+      msg.includes("canceled_at");
+
+    if (looksLikeSchemaCache) {
+      const fallbackUpd = await supabaseAdmin
+        .from("tow_trips")
+        .update({ status: "cancelado", updated_at: now.toISOString() })
+        .eq("id", tripId);
+      if (!fallbackUpd.error) {
+        const reqUpd = await supabaseAdmin
+          .from("tow_requests")
+          .update({ status: "CANCELADO", updated_at: now.toISOString() })
+          .eq("id", reqRow.id);
+        if (!reqUpd.error) {
+          return NextResponse.json(
+            {
+              ok: true,
+              canceledBy: payer,
+              penalty: hasPenalty ? { fee_cents: feeCents, after_seconds: elapsedSeconds, amount_cents: amountCents } : null,
+              reason: body.reason ? String(body.reason).slice(0, 180) : null,
+              hint: "Migração/Schema cache pendente para registrar detalhes da multa.",
+            },
+            { status: 200 },
+          );
+        }
+      }
+    }
+
     return NextResponse.json(
-      { error: tripUpd.error.message, hint: "Se for erro de constraint, aplique a migração 0005_cancel.sql." },
+      { error: msg, hint: "Aplique a migração 0005_cancel.sql e faça reload do schema do PostgREST." },
       { status: 500 },
     );
   }
