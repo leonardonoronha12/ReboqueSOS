@@ -65,6 +65,7 @@ export function TripTrackingClient(props: {
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelDone, setCancelDone] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -162,6 +163,31 @@ export function TripTrackingClient(props: {
     };
   }, [hasGoogleMaps, props.partner.photoUrl, towLocation]);
 
+  useEffect(() => {
+    if (!isCanceled) return;
+    if (isRedirecting) return;
+    setIsRedirecting(true);
+
+    let cancelled = false;
+    async function run() {
+      try {
+        const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" }).catch(() => null);
+        if (cancelled) return;
+        const to = res && res.ok ? "/partner" : `/requests/${encodeURIComponent(props.requestId)}`;
+        window.setTimeout(() => {
+          if (!cancelled) window.location.href = to;
+        }, 900);
+      } catch {
+        if (!cancelled) window.location.href = `/requests/${encodeURIComponent(props.requestId)}`;
+      }
+    }
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCanceled, isRedirecting, props.requestId]);
+
   if (!apiKey) {
     return (
       <div className="mx-auto w-full max-w-xl rounded-xl border bg-white p-6">
@@ -256,6 +282,9 @@ export function TripTrackingClient(props: {
                 <div className="mt-1 text-xs font-semibold text-brand-red/80">
                   Multa: {formatBrl(props.trip.canceled_fee_cents)}
                 </div>
+              ) : null}
+              {isRedirecting ? (
+                <div className="mt-1 text-xs font-semibold text-brand-red/80">Voltando…</div>
               ) : null}
             </div>
           ) : null}

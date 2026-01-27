@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, type ReactNode, useEffect, useState } from "react";
+import { Component, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { TripTrackingClient } from "./tripTrackingClient";
 
@@ -16,7 +16,7 @@ type TrackingResponse = {
     canceled_fee_cents?: number | null;
     canceled_after_seconds?: number | null;
   };
-  request?: { id?: string; local_cliente?: string | null; pickup?: Coords | null };
+  request?: { id?: string; status?: string | null; local_cliente?: string | null; pickup?: Coords | null };
   payment?: { amount_cents?: number | null; status?: string | null; paid_at?: string | null } | null;
   partner?: { name?: string | null; whatsapp?: string | null; photoUrl?: string | null };
   error?: string;
@@ -58,6 +58,7 @@ class LocalErrorBoundary extends Component<
 export function TripTrackingPageClient(props: { tripId: string }) {
   const [data, setData] = useState<TrackingResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const redirectingRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -82,10 +83,39 @@ export function TripTrackingPageClient(props: { tripId: string }) {
     }
 
     void load();
+    const id = window.setInterval(load, 3500);
     return () => {
       alive = false;
+      window.clearInterval(id);
     };
   }, [props.tripId]);
+
+  useEffect(() => {
+    if (redirectingRef.current) return;
+    const tripStatus = data?.trip?.status ? String(data.trip.status) : "";
+    const reqStatus = data?.request?.status ? String(data.request.status) : "";
+    const canceled = tripStatus === "cancelado" || reqStatus === "CANCELADO" || Boolean(data?.trip?.canceled_at);
+    if (!canceled) return;
+    redirectingRef.current = true;
+
+    let cancelled = false;
+    async function run() {
+      const requestId = data?.trip?.request_id ? String(data.trip.request_id) : "";
+      try {
+        const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" }).catch(() => null);
+        if (cancelled) return;
+        const to = res && res.ok ? "/partner" : requestId ? `/requests/${encodeURIComponent(requestId)}` : "/";
+        window.location.href = to;
+      } catch {
+        if (!cancelled) window.location.href = requestId ? `/requests/${encodeURIComponent(requestId)}` : "/";
+      }
+    }
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   if (error) {
     return (
