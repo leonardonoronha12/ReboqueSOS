@@ -11,6 +11,7 @@ const tripToRequestStatus: Record<TowTripStatus, string> = {
   em_servico: "EM_SERVICO",
   concluido: "CONCLUIDO",
   finalizado: "PAGO",
+  cancelado: "CANCELADO",
 };
 
 export async function POST(
@@ -61,4 +62,3 @@ export async function POST(
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
-

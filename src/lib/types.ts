@@ -8,12 +8,13 @@ export type TowRequestStatus =
   | "CHEGUEI"
   | "EM_SERVICO"
   | "CONCLUIDO"
-  | "PAGO";
+  | "PAGO"
+  | "CANCELADO";
 
 export type TowTripStatus =
   | "a_caminho"
   | "chegou"
   | "em_servico"
   | "concluido"
-  | "finalizado";
-
+  | "finalizado"
+  | "cancelado";

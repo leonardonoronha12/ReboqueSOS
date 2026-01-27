@@ -5,6 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Coords = { lat: number; lng: number };
 
+function formatBrl(cents: number | null) {
+  if (!Number.isFinite(cents) || cents == null) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+}
+
 function formatEta(minutes: number | null) {
   if (!Number.isFinite(minutes) || minutes == null) return "—";
   const m = Math.max(0, Math.round(minutes));
@@ -26,12 +31,27 @@ function initials(name: string) {
   return (a + b).toUpperCase();
 }
 
+function computeCancellationFeeCents(amountCents: number) {
+  const pct = Math.round(amountCents * 0.1);
+  const min = 1000;
+  const max = 5000;
+  return Math.max(min, Math.min(pct, max));
+}
+
 export function TripTrackingClient(props: {
   tripId: string;
   requestId: string;
   pickup: Coords;
   pickupLabel: string;
   initialTowLocation: Coords | null;
+  trip: {
+    status: string | null;
+    canceled_at: string | null;
+    canceled_by_role: string | null;
+    canceled_fee_cents: number | null;
+    canceled_after_seconds: number | null;
+  };
+  payment: { amount_cents: number | null; status: string | null; paid_at: string | null } | null;
   partner: {
     name: string;
     whatsapp: string | null;
@@ -42,6 +62,9 @@ export function TripTrackingClient(props: {
   const [route, setRoute] = useState<google.maps.DirectionsResult | null>(null);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const lastDirectionsAtRef = useRef(0);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelDone, setCancelDone] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -117,6 +140,14 @@ export function TripTrackingClient(props: {
 
   const partnerLabel = props.partner.name.trim() || "Reboque";
   const partnerInitials = initials(partnerLabel);
+  const isCanceled = cancelDone || props.trip.status === "cancelado" || props.trip.canceled_at != null;
+  const paidAt = props.payment?.paid_at ? new Date(props.payment.paid_at) : null;
+  const paidAtMs = paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt.getTime() : null;
+  const nowMs = Date.now();
+  const elapsedSeconds = paidAtMs ? Math.max(0, Math.floor((nowMs - paidAtMs) / 1000)) : null;
+  const amountCents = props.payment?.amount_cents != null && Number.isFinite(props.payment.amount_cents) ? props.payment.amount_cents : null;
+  const feePreviewCents = amountCents != null ? computeCancellationFeeCents(amountCents) : null;
+  const penaltyApplies = Boolean(amountCents != null && elapsedSeconds != null && elapsedSeconds >= 180);
 
   const partnerIcon = useMemo(() => {
     if (!towLocation) return undefined;
@@ -180,14 +211,14 @@ export function TripTrackingClient(props: {
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-50">
-      <GoogleMap
-        center={center}
-        zoom={14}
-        mapContainerStyle={{ width: "100%", height: "100%" }}
-        options={{ disableDefaultUI: true, clickableIcons: false }}
-      >
+    return (
+      <div className="fixed inset-0 z-50">
+        <GoogleMap
+          center={center}
+          zoom={14}
+          mapContainerStyle={{ width: "100%", height: "100%" }}
+          options={{ disableDefaultUI: true, clickableIcons: false }}
+        >
         <MarkerF position={props.pickup} />
         {route ? (
           <DirectionsRenderer
@@ -214,10 +245,27 @@ export function TripTrackingClient(props: {
             }
           />
         ) : null}
-      </GoogleMap>
+        </GoogleMap>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
         <div className="pointer-events-auto mx-auto w-full max-w-2xl rounded-3xl border border-brand-border/20 bg-white/95 p-4 shadow-soft backdrop-blur">
+          {isCanceled ? (
+            <div className="mb-3 rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+              Serviço cancelado
+              {props.trip.canceled_fee_cents && props.trip.canceled_fee_cents > 0 ? (
+                <div className="mt-1 text-xs font-semibold text-brand-red/80">
+                  Multa: {formatBrl(props.trip.canceled_fee_cents)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {cancelError ? (
+            <div className="mb-3 rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+              {cancelError}
+            </div>
+          ) : null}
+
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-brand-black/60">Reboque a caminho</div>
@@ -247,6 +295,50 @@ export function TripTrackingClient(props: {
             >
               Detalhes
             </a>
+            {!isCanceled ? (
+              <button
+                className="rounded-2xl border border-brand-red/30 bg-brand-red/10 px-4 py-2 text-sm font-semibold text-brand-red hover:bg-brand-red/15 disabled:opacity-50"
+                type="button"
+                disabled={isCanceling}
+                onClick={async () => {
+                  setCancelError(null);
+                  if (isCanceling) return;
+                  const extra =
+                    penaltyApplies && feePreviewCents != null
+                      ? `\n\nMulta de cancelamento: ${formatBrl(feePreviewCents)}`
+                      : feePreviewCents != null && elapsedSeconds != null && elapsedSeconds < 180
+                        ? `\n\nSem multa se cancelar agora. Após 3 min, multa: ${formatBrl(feePreviewCents)}`
+                        : "";
+                  const ok = window.confirm(`Cancelar o serviço?${extra}`);
+                  if (!ok) return;
+                  setIsCanceling(true);
+                  try {
+                    const res = await fetch(`/api/trips/${encodeURIComponent(props.tripId)}/cancel`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ reason: "user_cancel" }),
+                    });
+                    const json = (await res.json().catch(() => null)) as
+                      | { error?: string; penalty?: { fee_cents?: number } | null }
+                      | null;
+                    if (res.status === 401) {
+                      window.location.href = `/login`;
+                      return;
+                    }
+                    if (!res.ok) {
+                      throw new Error(json?.error || "Não foi possível cancelar agora.");
+                    }
+                    setCancelDone(true);
+                  } catch (e) {
+                    setCancelError(e instanceof Error ? e.message : "Não foi possível cancelar agora.");
+                  } finally {
+                    setIsCanceling(false);
+                  }
+                }}
+              >
+                {isCanceling ? "Cancelando..." : "Cancelar serviço"}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

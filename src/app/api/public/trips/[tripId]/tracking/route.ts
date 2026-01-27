@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
 
   const { data: trip } = await supabaseAdmin
     .from("tow_trips")
-    .select("id,request_id,driver_id,status")
+    .select("*")
     .eq("id", tripId)
     .maybeSingle();
 
@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
 
   const { data: reqRow } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,local_cliente,lat,lng,status")
+    .select("*")
     .eq("id", trip.request_id)
     .maybeSingle();
 
@@ -43,15 +43,36 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
     partnerPhotoUrl = data?.signedUrl ?? null;
   }
 
+  const { data: payment } = await supabaseAdmin
+    .from("payments")
+    .select("amount,status,updated_at")
+    .eq("request_id", trip.request_id)
+    .maybeSingle();
+
   return NextResponse.json(
     {
-      trip: { id: trip.id, request_id: trip.request_id, status: trip.status },
+      trip: {
+        id: trip.id,
+        request_id: trip.request_id,
+        status: trip.status,
+        canceled_at: (trip as { canceled_at?: string | null }).canceled_at ?? null,
+        canceled_by_role: (trip as { canceled_by_role?: string | null }).canceled_by_role ?? null,
+        canceled_fee_cents: (trip as { canceled_fee_cents?: number | null }).canceled_fee_cents ?? null,
+        canceled_after_seconds: (trip as { canceled_after_seconds?: number | null }).canceled_after_seconds ?? null,
+      },
       request: {
         id: reqRow?.id ?? trip.request_id,
         status: reqRow?.status ?? null,
         local_cliente: reqRow?.local_cliente ?? null,
         pickup,
       },
+      payment: payment
+        ? {
+            amount_cents: typeof payment.amount === "number" ? payment.amount : null,
+            status: payment.status ?? null,
+            paid_at: payment.status === "succeeded" ? (payment.updated_at ?? null) : null,
+          }
+        : null,
       partner: {
         name: partner?.empresa_nome ?? null,
         whatsapp: partner?.whatsapp_number ?? null,
@@ -61,4 +82,3 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
     { status: 200 },
   );
 }
-

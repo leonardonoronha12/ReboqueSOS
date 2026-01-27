@@ -7,8 +7,17 @@ import { TripTrackingClient } from "./tripTrackingClient";
 type Coords = { lat: number; lng: number };
 
 type TrackingResponse = {
-  trip?: { id?: string; request_id?: string; status?: string };
+  trip?: {
+    id?: string;
+    request_id?: string;
+    status?: string | null;
+    canceled_at?: string | null;
+    canceled_by_role?: string | null;
+    canceled_fee_cents?: number | null;
+    canceled_after_seconds?: number | null;
+  };
   request?: { id?: string; local_cliente?: string | null; pickup?: Coords | null };
+  payment?: { amount_cents?: number | null; status?: string | null; paid_at?: string | null } | null;
   partner?: { name?: string | null; whatsapp?: string | null; photoUrl?: string | null };
   error?: string;
 };
@@ -122,6 +131,25 @@ export function TripTrackingPageClient(props: { tripId: string }) {
         pickup={pickup}
         pickupLabel={pickupLabel}
         initialTowLocation={null}
+        trip={{
+          status: data?.trip?.status ? String(data.trip.status) : null,
+          canceled_at: data?.trip?.canceled_at ? String(data.trip.canceled_at) : null,
+          canceled_by_role: data?.trip?.canceled_by_role ? String(data.trip.canceled_by_role) : null,
+          canceled_fee_cents:
+            typeof data?.trip?.canceled_fee_cents === "number" ? data.trip.canceled_fee_cents : null,
+          canceled_after_seconds:
+            typeof data?.trip?.canceled_after_seconds === "number" ? data.trip.canceled_after_seconds : null,
+        }}
+        payment={
+          data?.payment
+            ? {
+                amount_cents:
+                  typeof data.payment.amount_cents === "number" ? data.payment.amount_cents : null,
+                status: data.payment.status ? String(data.payment.status) : null,
+                paid_at: data.payment.paid_at ? String(data.payment.paid_at) : null,
+              }
+            : null
+        }
         partner={{
           name: data?.partner?.name ? String(data.partner.name) : "Reboque",
           whatsapp: data?.partner?.whatsapp ? String(data.partner.whatsapp) : null,
