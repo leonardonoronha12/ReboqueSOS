@@ -1,7 +1,7 @@
 "use client";
 
 import { DirectionsRenderer, GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Coords = { lat: number; lng: number };
 
@@ -66,6 +66,7 @@ export function TripTrackingClient(props: {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelDone, setCancelDone] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const redirectInFlightRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -163,30 +164,23 @@ export function TripTrackingClient(props: {
     };
   }, [hasGoogleMaps, props.partner.photoUrl, towLocation]);
 
+  const redirectAfterCancel = useCallback(async () => {
+    if (redirectInFlightRef.current) return;
+    redirectInFlightRef.current = true;
+    setIsRedirecting(true);
+    try {
+      const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" }).catch(() => null);
+      const to = res && res.ok ? "/partner" : `/requests/${encodeURIComponent(props.requestId)}`;
+      window.location.href = to;
+    } catch {
+      window.location.href = `/requests/${encodeURIComponent(props.requestId)}`;
+    }
+  }, [props.requestId]);
+
   useEffect(() => {
     if (!isCanceled) return;
-    if (isRedirecting) return;
-    setIsRedirecting(true);
-
-    let cancelled = false;
-    async function run() {
-      try {
-        const res = await fetch("/api/partner/trips/paid-active", { cache: "no-store" }).catch(() => null);
-        if (cancelled) return;
-        const to = res && res.ok ? "/partner" : `/requests/${encodeURIComponent(props.requestId)}`;
-        window.setTimeout(() => {
-          if (!cancelled) window.location.href = to;
-        }, 900);
-      } catch {
-        if (!cancelled) window.location.href = `/requests/${encodeURIComponent(props.requestId)}`;
-      }
-    }
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isCanceled, isRedirecting, props.requestId]);
+    void redirectAfterCancel();
+  }, [isCanceled, redirectAfterCancel]);
 
   if (!apiKey) {
     return (
@@ -358,6 +352,7 @@ export function TripTrackingClient(props: {
                       throw new Error(json?.error || "Não foi possível cancelar agora.");
                     }
                     setCancelDone(true);
+                    await redirectAfterCancel();
                   } catch (e) {
                     setCancelError(e instanceof Error ? e.message : "Não foi possível cancelar agora.");
                   } finally {
