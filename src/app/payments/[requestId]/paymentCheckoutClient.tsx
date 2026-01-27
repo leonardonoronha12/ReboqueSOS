@@ -62,6 +62,7 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "submitted" | "paid">("idle");
+  const [paidTripId, setPaidTripId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,9 +94,13 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
       try {
         const res = await fetch(`/api/public/requests/${props.requestId}`, { cache: "no-store" });
         if (!res.ok) return;
-        const json = (await res.json()) as { request?: { status?: string } };
+        const json = (await res.json()) as { request?: { status?: string }; trip?: { id?: string } | null };
         if (json.request?.status === "PAGO") {
-          if (!cancelled) setStatus("paid");
+          if (!cancelled) {
+            const tripId = json.trip?.id ? String(json.trip.id) : null;
+            setPaidTripId(tripId);
+            setStatus("paid");
+          }
           return;
         }
       } finally {
@@ -114,10 +119,14 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
   useEffect(() => {
     if (status !== "paid") return;
     const t = window.setTimeout(() => {
-      router.replace(`/requests/${props.requestId}`);
+      if (paidTripId) {
+        router.replace(`/trips/${paidTripId}`);
+      } else {
+        router.replace(`/requests/${props.requestId}`);
+      }
     }, 800);
     return () => window.clearTimeout(t);
-  }, [props.requestId, router, status]);
+  }, [paidTripId, props.requestId, router, status]);
 
   const options = useMemo<StripePaymentElementOptions>(() => {
     return {
@@ -152,9 +161,15 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
         <div className="mb-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
           Pagamento confirmado. Obrigado!
           <div className="mt-3">
-            <a className="rounded-md border bg-white px-3 py-2 text-sm font-semibold" href={`/requests/${props.requestId}`}>
-              Voltar ao pedido
-            </a>
+            {paidTripId ? (
+              <a className="rounded-md border bg-white px-3 py-2 text-sm font-semibold" href={`/trips/${paidTripId}`}>
+                Acompanhar reboque
+              </a>
+            ) : (
+              <a className="rounded-md border bg-white px-3 py-2 text-sm font-semibold" href={`/requests/${props.requestId}`}>
+                Voltar ao pedido
+              </a>
+            )}
           </div>
         </div>
       ) : null}
