@@ -314,6 +314,7 @@ export function PartnerDashboardClient(props: {
   const [alertRequest, setAlertRequest] = useState<RequestRow | null>(null);
   const [myCoords, setMyCoords] = useState<Coords | null>(null);
   const seenRequestIdsRef = useRef(new Set<string>());
+  const pollingInFlightRef = useRef(false);
 
   const requestCount = requests.length;
   const tripCount = props.trips.length;
@@ -325,6 +326,12 @@ export function PartnerDashboardClient(props: {
 
   useEffect(() => {
     setRequests(props.requests);
+  }, [props.requests]);
+
+  useEffect(() => {
+    for (const r of props.requests) {
+      seenRequestIdsRef.current.add(r.id);
+    }
   }, [props.requests]);
 
   useEffect(() => {
@@ -402,6 +409,59 @@ export function PartnerDashboardClient(props: {
       }
     };
   }, [ativo, props.cidade, props.supabaseAnonKey, props.supabaseUrl, soundEnabled]);
+
+  useEffect(() => {
+    if (!ativo) return;
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      if (pollingInFlightRef.current) return;
+      pollingInFlightRef.current = true;
+      try {
+        const res = await fetch("/api/partner/requests/open", { cache: "no-store" });
+        const json = await readJsonResponse<{ requests?: Array<Partial<RequestRow>>; error?: string }>(res);
+        if (!res.ok) return;
+        const list = (json?.requests ?? []) as Array<Partial<RequestRow>>;
+        const normalized = list
+          .map((r) => ({
+            id: String(r.id ?? ""),
+            local_cliente: String(r.local_cliente ?? ""),
+            cidade: String(r.cidade ?? props.cidade),
+            status: String(r.status ?? ""),
+            created_at: String(r.created_at ?? ""),
+            lat: typeof r.lat === "number" ? r.lat : null,
+            lng: typeof r.lng === "number" ? r.lng : null,
+            cliente_nome: typeof r.cliente_nome === "string" ? r.cliente_nome : null,
+            telefone_cliente: typeof r.telefone_cliente === "string" ? r.telefone_cliente : null,
+            modelo_veiculo: typeof r.modelo_veiculo === "string" ? r.modelo_veiculo : null,
+          }))
+          .filter((r) => r.id && r.local_cliente);
+
+        if (normalized.length) {
+          setRequests(normalized);
+          const newest = normalized[0];
+          if (newest && !seenRequestIdsRef.current.has(newest.id)) {
+            seenRequestIdsRef.current.add(newest.id);
+            setAlertRequest(newest);
+            setAlertOpen(true);
+            if (soundEnabled) playAlertTone();
+          }
+        }
+      } catch {
+        return;
+      } finally {
+        pollingInFlightRef.current = false;
+      }
+    }
+
+    void tick();
+    const id = window.setInterval(() => void tick(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [ativo, props.cidade, soundEnabled]);
 
   async function loadBalance() {
     setBalanceError(null);
