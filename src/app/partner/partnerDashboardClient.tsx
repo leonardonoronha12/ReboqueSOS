@@ -82,6 +82,9 @@ async function readJsonResponse<T>(res: Response) {
 }
 
 let sharedAlertAudioCtx: AudioContext | null = null;
+let activeAlertGain: GainNode | null = null;
+let activeAlertOscillators: OscillatorNode[] = [];
+let activeAlertTimers: number[] = [];
 
 function getAlertAudioContext() {
   const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -104,7 +107,46 @@ async function unlockAlertAudio() {
   }
 }
 
-function playAlertTone() {
+function stopAlertTone() {
+  for (const id of activeAlertTimers) {
+    window.clearTimeout(id);
+  }
+  activeAlertTimers = [];
+
+  for (const osc of activeAlertOscillators) {
+    try {
+      osc.stop();
+    } catch {
+      continue;
+    }
+  }
+  activeAlertOscillators = [];
+
+  if (activeAlertGain) {
+    try {
+      activeAlertGain.disconnect();
+    } catch {
+      return;
+    } finally {
+      activeAlertGain = null;
+    }
+  }
+}
+
+function scheduleTone(ctx: AudioContext, gain: GainNode, at: number, duration: number, freq: number) {
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq, at);
+  osc.connect(gain);
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.linearRampToValueAtTime(0.18, at + 0.01);
+  gain.gain.linearRampToValueAtTime(0.0001, at + duration);
+  osc.start(at);
+  osc.stop(at + duration + 0.02);
+  activeAlertOscillators.push(osc);
+}
+
+function startAlertToneLong() {
   try {
     const ctx = getAlertAudioContext();
     if (!ctx) return;
@@ -113,30 +155,58 @@ function playAlertTone() {
       return;
     }
 
-    const now = ctx.currentTime;
+    stopAlertTone();
+
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
     gain.connect(ctx.destination);
+    activeAlertGain = gain;
 
-    const beeps = [
-      { t: 0.0, d: 0.12, f: 880 },
-      { t: 0.18, d: 0.12, f: 880 },
-      { t: 0.36, d: 0.18, f: 988 },
-    ];
+    const start = ctx.currentTime + 0.04;
+    const cycle = 1.35;
+    const totalSeconds = 9.5;
+    const cycles = Math.max(1, Math.floor(totalSeconds / cycle));
 
-    for (const b of beeps) {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(b.f, now + b.t);
-      osc.connect(gain);
-      gain.gain.setValueAtTime(0.0001, now + b.t);
-      gain.gain.linearRampToValueAtTime(0.12, now + b.t + 0.01);
-      gain.gain.linearRampToValueAtTime(0.0001, now + b.t + b.d);
-      osc.start(now + b.t);
-      osc.stop(now + b.t + b.d + 0.02);
+    for (let i = 0; i < cycles; i += 1) {
+      const base = start + i * cycle;
+      scheduleTone(ctx, gain, base + 0.0, 0.12, 880);
+      scheduleTone(ctx, gain, base + 0.18, 0.12, 880);
+      scheduleTone(ctx, gain, base + 0.55, 0.12, 784);
+      scheduleTone(ctx, gain, base + 0.73, 0.12, 784);
+      scheduleTone(ctx, gain, base + 1.05, 0.18, 988);
     }
 
-    window.setTimeout(() => gain.disconnect(), 1200);
+    activeAlertTimers.push(
+      window.setTimeout(() => stopAlertTone(), Math.ceil(totalSeconds * 1000) + 200),
+    );
+  } catch {
+    return;
+  }
+}
+
+function startAlertToneShort() {
+  try {
+    const ctx = getAlertAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      void ctx.resume().catch(() => null);
+      return;
+    }
+
+    stopAlertTone();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.connect(ctx.destination);
+    activeAlertGain = gain;
+
+    const base = ctx.currentTime + 0.04;
+    scheduleTone(ctx, gain, base + 0.0, 0.12, 880);
+    scheduleTone(ctx, gain, base + 0.18, 0.12, 880);
+    scheduleTone(ctx, gain, base + 0.55, 0.12, 784);
+    scheduleTone(ctx, gain, base + 0.73, 0.12, 784);
+    scheduleTone(ctx, gain, base + 1.05, 0.18, 988);
+
+    activeAlertTimers.push(window.setTimeout(() => stopAlertTone(), 1800));
   } catch {
     return;
   }
@@ -363,14 +433,14 @@ export function PartnerDashboardClient(props: {
   async function testSound() {
     const ok = await unlockAlertAudio();
     setSoundReady(ok);
-    if (ok) playAlertTone();
+    if (ok) startAlertToneShort();
   }
 
   async function toggleSound() {
     setSoundEnabled((v) => !v);
     const ok = await unlockAlertAudio();
     setSoundReady(ok);
-    if (ok) playAlertTone();
+    if (ok) startAlertToneShort();
   }
 
   useEffect(() => {
@@ -446,7 +516,7 @@ export function PartnerDashboardClient(props: {
           setRequests((prev) => (prev.some((r) => r.id === normalized.id) ? prev : [normalized, ...prev].slice(0, 20)));
           setAlertRequest(normalized);
           setAlertOpen(true);
-          if (soundEnabled) playAlertTone();
+          if (soundEnabled) startAlertToneLong();
         },
       )
       .subscribe();
@@ -494,7 +564,7 @@ export function PartnerDashboardClient(props: {
             seenRequestIdsRef.current.add(newest.id);
             setAlertRequest(newest);
             setAlertOpen(true);
-            if (soundEnabled) playAlertTone();
+            if (soundEnabled) startAlertToneLong();
           }
         }
       } catch {
@@ -549,6 +619,7 @@ export function PartnerDashboardClient(props: {
       const ok = await unlockAlertAudio();
       setSoundReady(ok);
     }
+    if (!next) stopAlertTone();
 
     try {
       const res = await fetch("/api/partner/active", {
@@ -612,7 +683,10 @@ export function PartnerDashboardClient(props: {
         open={alertOpen}
         request={alertRequest}
         myCoords={myCoords}
-        onClose={() => setAlertOpen(false)}
+        onClose={() => {
+          stopAlertTone();
+          setAlertOpen(false);
+        }}
         soundEnabled={soundEnabled}
         onToggleSound={toggleSound}
         onTestSound={testSound}
