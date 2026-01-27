@@ -76,12 +76,15 @@ export function TripTrackingClient(props: {
     region: "BR",
   });
 
+  const hasGoogleMaps =
+    typeof window !== "undefined" && Boolean((window as unknown as { google?: { maps?: unknown } }).google?.maps);
+
   const center = useMemo(() => {
     if (towLocation) return towLocation;
     return props.pickup;
   }, [props.pickup, towLocation]);
 
-  const canRoute = Boolean(isLoaded && towLocation);
+  const canRoute = Boolean(isLoaded && hasGoogleMaps && towLocation);
 
   useEffect(() => {
     if (!canRoute) return;
@@ -89,21 +92,28 @@ export function TripTrackingClient(props: {
     if (now - lastDirectionsAtRef.current < 12000) return;
     lastDirectionsAtRef.current = now;
 
-    const service = new google.maps.DirectionsService();
-    service.route(
-      {
-        origin: towLocation as Coords,
-        destination: props.pickup,
-        travelMode: google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status !== "OK" || !result) return;
-        setRoute(result);
-        const seconds =
-          result.routes?.[0]?.legs?.reduce((acc, leg) => acc + (leg.duration?.value ?? 0), 0) ?? 0;
-        if (seconds > 0) setEtaMinutes(seconds / 60);
-      },
-    );
+    try {
+      if (typeof window === "undefined") return;
+      const g = (window as unknown as { google?: typeof google }).google;
+      if (!g?.maps?.DirectionsService) return;
+      const service = new g.maps.DirectionsService();
+      service.route(
+        {
+          origin: towLocation as Coords,
+          destination: props.pickup,
+          travelMode: g.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status !== "OK" || !result) return;
+          setRoute(result);
+          const seconds =
+            result.routes?.[0]?.legs?.reduce((acc, leg) => acc + (leg.duration?.value ?? 0), 0) ?? 0;
+          if (seconds > 0) setEtaMinutes(seconds / 60);
+        },
+      );
+    } catch {
+      return;
+    }
   }, [canRoute, props.pickup, towLocation]);
 
   const partnerLabel = props.partner.name.trim() || "Reboque";
@@ -123,6 +133,36 @@ export function TripTrackingClient(props: {
       <div className="fixed inset-0 grid place-items-center bg-white">
         <div className="rounded-xl border bg-white p-6">
           <p className="text-sm text-zinc-700">Carregando mapa...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasGoogleMaps) {
+    return (
+      <div className="fixed inset-0 grid place-items-center bg-white p-6">
+        <div className="w-full max-w-md rounded-xl border bg-white p-6">
+          <h2 className="text-lg font-semibold">Rastreamento</h2>
+          <p className="mt-2 text-sm text-zinc-700">
+            Não foi possível carregar o Google Maps neste dispositivo. Recarregue a página.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white"
+              type="button"
+              onClick={() => window.location.reload()}
+            >
+              Recarregar
+            </button>
+            <a
+              className="rounded-md border px-4 py-2 text-sm font-semibold"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${props.pickup.lat},${props.pickup.lng}`)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir no Google Maps
+            </a>
+          </div>
         </div>
       </div>
     );
