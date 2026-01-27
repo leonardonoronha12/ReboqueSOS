@@ -251,11 +251,11 @@ export function TripTrackingClient(props: {
     const g = (window as unknown as { google?: typeof google }).google;
     if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
     return {
-      url: props.partner.photoUrl || towMarkerSvgDataUrl(),
+      url: towMarkerSvgDataUrl(),
       scaledSize: new g.maps.Size(52, 52),
       anchor: new g.maps.Point(26, 26),
     };
-  }, [hasGoogleMaps, props.partner.photoUrl, towLocation]);
+  }, [hasGoogleMaps, towLocation]);
 
   const redirectAfterCancel = useCallback(async () => {
     if (redirectInFlightRef.current) return;
