@@ -109,12 +109,27 @@ export function RequestDetailsClient(props: {
   const [proposalModalOpen, setProposalModalOpen] = useState(false);
   const [proposalModalId, setProposalModalId] = useState<string | null>(null);
   const lastNotifiedIdRef = useRef<string | null>(null);
+  const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => new Set());
 
-  const accepted = useMemo(() => proposals.find((p) => p.accepted) ?? null, [proposals]);
-  const newestProposal = useMemo(() => proposals[0] ?? null, [proposals]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`reboquesos:declined_proposals:${props.requestId}`);
+      if (!raw) return;
+      const arr = JSON.parse(raw) as unknown;
+      if (!Array.isArray(arr)) return;
+      const next = new Set<string>(arr.map((v) => String(v)).filter(Boolean));
+      setDeclinedIds(next);
+    } catch {
+      return;
+    }
+  }, [props.requestId]);
+
+  const visibleProposals = useMemo(() => proposals.filter((p) => !declinedIds.has(p.id)), [declinedIds, proposals]);
+  const accepted = useMemo(() => visibleProposals.find((p) => p.accepted) ?? null, [visibleProposals]);
+  const newestProposal = useMemo(() => visibleProposals[0] ?? null, [visibleProposals]);
   const modalProposal = useMemo(
-    () => (proposalModalId ? proposals.find((p) => p.id === proposalModalId) ?? null : null),
-    [proposalModalId, proposals],
+    () => (proposalModalId ? visibleProposals.find((p) => p.id === proposalModalId) ?? null : null),
+    [proposalModalId, visibleProposals],
   );
 
   useEffect(() => {
@@ -160,6 +175,23 @@ export function RequestDetailsClient(props: {
     void tryBeep();
   }, [accepted, newestProposal]);
 
+  function declineProposal(proposalId: string) {
+    setDeclinedIds((prev) => {
+      const next = new Set(prev);
+      next.add(proposalId);
+      try {
+        window.localStorage.setItem(
+          `reboquesos:declined_proposals:${props.requestId}`,
+          JSON.stringify(Array.from(next.values())),
+        );
+      } catch {
+        return next;
+      }
+      return next;
+    });
+    setProposalModalOpen(false);
+  }
+
   async function acceptProposal(proposalId: string) {
     setIsAccepting(proposalId);
     setError(null);
@@ -188,12 +220,19 @@ export function RequestDetailsClient(props: {
               <button
                 className="rounded-md border px-4 py-2 text-sm font-semibold"
                 type="button"
+                onClick={() => declineProposal(modalProposal.id)}
+              >
+                Recusar
+              </button>
+              <button
+                className="rounded-md border px-4 py-2 text-sm font-semibold"
+                type="button"
                 onClick={() => setProposalModalOpen(false)}
               >
                 Depois
               </button>
               <button
-                className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 type="button"
                 disabled={!!accepted || isAccepting === modalProposal.id}
                 onClick={() => acceptProposal(modalProposal.id)}
@@ -205,19 +244,19 @@ export function RequestDetailsClient(props: {
         }
       >
         {modalProposal ? (
-          <div className="space-y-3 text-sm text-brand-text2">
-            <div className="rounded-xl border border-brand-border bg-brand-graphite/60 p-3">
-              <div className="text-xs font-semibold text-brand-text2">Preço</div>
-              <div className="mt-1 text-lg font-extrabold text-white">{formatBrl(Number(modalProposal.valor))}</div>
-              <div className="mt-2 text-xs font-semibold text-brand-text2">Chega em</div>
-              <div className="mt-1 text-base font-extrabold text-white">{Math.max(1, Math.round(Number(modalProposal.eta_minutes || 0)))} min</div>
+          <div className="space-y-3 text-sm text-brand-black/70">
+            <div className="rounded-xl border border-brand-border/20 bg-white p-3">
+              <div className="text-xs font-semibold text-brand-black/60">Preço</div>
+              <div className="mt-1 text-lg font-extrabold text-brand-black">{formatBrl(Number(modalProposal.valor))}</div>
+              <div className="mt-2 text-xs font-semibold text-brand-black/60">Chega em</div>
+              <div className="mt-1 text-base font-extrabold text-brand-black">{Math.max(1, Math.round(Number(modalProposal.eta_minutes || 0)))} min</div>
             </div>
 
-            <div className="rounded-xl border border-brand-border bg-brand-graphite/60 p-3">
-              <div className="text-xs font-semibold text-brand-text2">Reboque</div>
-              <div className="mt-1 text-base font-extrabold text-white">{modalProposal.partner?.empresa_nome ?? "Parceiro"}</div>
+            <div className="rounded-xl border border-brand-border/20 bg-white p-3">
+              <div className="text-xs font-semibold text-brand-black/60">Reboque</div>
+              <div className="mt-1 text-base font-extrabold text-brand-black">{modalProposal.partner?.empresa_nome ?? "Parceiro"}</div>
               {modalProposal.partner?.caminhao_modelo || modalProposal.partner?.caminhao_tipo || modalProposal.partner?.caminhao_placa ? (
-                <div className="mt-1 text-xs text-brand-text2">
+                <div className="mt-1 text-xs text-brand-black/60">
                   {[modalProposal.partner?.caminhao_tipo, modalProposal.partner?.caminhao_modelo, modalProposal.partner?.caminhao_placa]
                     .filter(Boolean)
                     .join(" • ")}
@@ -226,7 +265,7 @@ export function RequestDetailsClient(props: {
               {modalProposal.partner?.whatsapp_number ? (
                 <div className="mt-2">
                   <a
-                    className="inline-flex rounded-md border px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                    className="inline-flex rounded-md border border-brand-border/20 bg-white px-3 py-2 text-xs font-semibold text-brand-black hover:bg-brand-yellow/10"
                     href={`https://wa.me/${String(modalProposal.partner.whatsapp_number).replace(/\D/g, "")}`}
                     target="_blank"
                     rel="noreferrer"
@@ -289,7 +328,7 @@ export function RequestDetailsClient(props: {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            {proposals.map((p) => (
+            {visibleProposals.map((p) => (
               <div key={p.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
                   <div className="font-medium">

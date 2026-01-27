@@ -1,8 +1,50 @@
+import { redirect } from "next/navigation";
+
 import { RequestForm } from "@/app/_components/RequestForm";
 import { BrandLogo } from "@/components/BrandLogo";
 import { RequestCtaButton } from "@/app/_components/RequestCtaButton";
+import { getUserProfile } from "@/lib/auth/getProfile";
+import { requireUser } from "@/lib/auth/requireUser";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-export default function Home() {
+export default async function Home() {
+  const user = await requireUser();
+  if (user) {
+    const profile = await getUserProfile(user.id);
+    if (profile?.role === "cliente" || profile?.role === "admin") {
+      const supabaseAdmin = createSupabaseAdminClient();
+      const { data: requests } = await supabaseAdmin
+        .from("tow_requests")
+        .select("id,status,accepted_proposal_id,created_at,updated_at")
+        .eq("cliente_id", user.id)
+        .in("status", ["ACEITO", "PAGO", "A_CAMINHO", "CHEGUEI", "EM_SERVICO", "CONCLUIDO"])
+        .order("updated_at", { ascending: false })
+        .limit(10);
+
+      const req = (requests ?? [])[0];
+      const requestId = req?.id ? String(req.id) : "";
+      const status = req?.status ? String(req.status) : "";
+      if (requestId && status === "ACEITO") {
+        redirect(`/payments/${encodeURIComponent(requestId)}`);
+      }
+
+      if (requestId) {
+        const { data: trip } = await supabaseAdmin
+          .from("tow_trips")
+          .select("id,status,updated_at,created_at")
+          .eq("request_id", requestId)
+          .in("status", ["a_caminho", "chegou", "em_servico", "finalizado"])
+          .order("updated_at", { ascending: false })
+          .maybeSingle();
+
+        const tripId = trip?.id ? String(trip.id) : "";
+        if (tripId) {
+          redirect(`/trips/${encodeURIComponent(tripId)}`);
+        }
+      }
+    }
+  }
+
   return (
     <div className="relative -mx-4 -mt-4 overflow-hidden bg-brand-white px-4 py-6 sm:-mt-8 sm:py-10 sm:rounded-3xl">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_12%_0%,rgba(255,195,0,0.28)_0%,rgba(255,255,255,0)_60%),radial-gradient(55%_55%_at_88%_8%,rgba(225,6,0,0.22)_0%,rgba(255,255,255,0)_60%)]" />
