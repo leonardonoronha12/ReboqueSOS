@@ -1,7 +1,6 @@
 "use client";
 
-import { DirectionsRenderer, GoogleMap, MarkerF, OverlayView, useJsApiLoader } from "@react-google-maps/api";
-import Image from "next/image";
+import { DirectionsRenderer, GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Coords = { lat: number; lng: number };
@@ -119,6 +118,19 @@ export function TripTrackingClient(props: {
   const partnerLabel = props.partner.name.trim() || "Reboque";
   const partnerInitials = initials(partnerLabel);
 
+  const partnerIcon = useMemo(() => {
+    if (!towLocation) return undefined;
+    if (!hasGoogleMaps) return undefined;
+    if (!props.partner.photoUrl) return undefined;
+    const g = (window as unknown as { google?: typeof google }).google;
+    if (!g?.maps?.Size || !g?.maps?.Point) return undefined;
+    return {
+      url: props.partner.photoUrl,
+      scaledSize: new g.maps.Size(52, 52),
+      anchor: new g.maps.Point(26, 26),
+    };
+  }, [hasGoogleMaps, props.partner.photoUrl, towLocation]);
+
   if (!apiKey) {
     return (
       <div className="mx-auto w-full max-w-xl rounded-xl border bg-white p-6">
@@ -187,28 +199,20 @@ export function TripTrackingClient(props: {
           />
         ) : null}
         {towLocation ? (
-          <OverlayView position={towLocation} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
-            <div className="relative -translate-x-1/2 -translate-y-1/2">
-              <div className="h-12 w-12 overflow-hidden rounded-full border-2 border-white bg-brand-yellow shadow-soft">
-                {props.partner.photoUrl ? (
-                  <Image
-                    src={props.partner.photoUrl}
-                    alt={partnerLabel}
-                    width={48}
-                    height={48}
-                    className="h-full w-full object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-sm font-extrabold text-brand-black">
-                    {partnerInitials}
-                  </div>
-                )}
-              </div>
-              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-[7px] border-t-[10px] border-x-transparent border-t-white" />
-              <div className="absolute left-1/2 top-full mt-[9px] h-0 w-0 -translate-x-1/2 border-x-[6px] border-t-[9px] border-x-transparent border-t-brand-yellow" />
-            </div>
-          </OverlayView>
+          <MarkerF
+            position={towLocation}
+            icon={partnerIcon}
+            label={
+              !partnerIcon
+                ? {
+                    text: partnerInitials,
+                    color: "#0b0b0d",
+                    fontWeight: "800",
+                    fontSize: "12px",
+                  }
+                : undefined
+            }
+          />
         ) : null}
       </GoogleMap>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Component, type ReactNode, useEffect, useState } from "react";
 
 import { TripTrackingClient } from "./tripTrackingClient";
 
@@ -12,6 +12,39 @@ type TrackingResponse = {
   partner?: { name?: string | null; whatsapp?: string | null; photoUrl?: string | null };
   error?: string;
 };
+
+class LocalErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="mx-auto w-full max-w-xl rounded-xl border bg-white p-6">
+          <h1 className="text-xl font-semibold">Rastreamento</h1>
+          <p className="mt-2 text-sm text-zinc-700">Não foi possível abrir o mapa neste dispositivo.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white"
+              type="button"
+              onClick={() => window.location.reload()}
+            >
+              Recarregar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export function TripTrackingPageClient(props: { tripId: string }) {
   const [data, setData] = useState<TrackingResponse | null>(null);
@@ -82,18 +115,19 @@ export function TripTrackingPageClient(props: { tripId: string }) {
   }
 
   return (
-    <TripTrackingClient
-      tripId={tripId}
-      requestId={requestId}
-      pickup={pickup}
-      pickupLabel={pickupLabel}
-      initialTowLocation={null}
-      partner={{
-        name: data?.partner?.name ? String(data.partner.name) : "Reboque",
-        whatsapp: data?.partner?.whatsapp ? String(data.partner.whatsapp) : null,
-        photoUrl: data?.partner?.photoUrl ? String(data.partner.photoUrl) : null,
-      }}
-    />
+    <LocalErrorBoundary>
+      <TripTrackingClient
+        tripId={tripId}
+        requestId={requestId}
+        pickup={pickup}
+        pickupLabel={pickupLabel}
+        initialTowLocation={null}
+        partner={{
+          name: data?.partner?.name ? String(data.partner.name) : "Reboque",
+          whatsapp: data?.partner?.whatsapp ? String(data.partner.whatsapp) : null,
+          photoUrl: data?.partner?.photoUrl ? String(data.partner.photoUrl) : null,
+        }}
+      />
+    </LocalErrorBoundary>
   );
 }
-
