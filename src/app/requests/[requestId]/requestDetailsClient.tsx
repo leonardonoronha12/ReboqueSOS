@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { Modal } from "@/components/ui/Modal";
 
 type RequestRow = {
   id: string;
@@ -14,6 +16,16 @@ type RequestRow = {
   created_at: string;
 };
 
+type PartnerRow = {
+  id: string;
+  empresa_nome: string | null;
+  whatsapp_number: string | null;
+  caminhao_modelo: string | null;
+  caminhao_placa: string | null;
+  caminhao_tipo: string | null;
+  foto_parceiro_path: string | null;
+};
+
 type ProposalRow = {
   id: string;
   partner_id: string;
@@ -21,12 +33,66 @@ type ProposalRow = {
   eta_minutes: number;
   accepted: boolean;
   created_at: string;
+  partner?: PartnerRow | null;
 };
 
 type TripRow = {
   id: string;
   status: string;
 };
+
+function formatBrl(value: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+}
+
+function tryVibrate() {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([180, 80, 180]);
+    }
+  } catch {
+    return;
+  }
+}
+
+async function tryBeep() {
+  try {
+    const AudioCtx =
+      (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+        .AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === "suspended") await ctx.resume().catch(() => null);
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    gain.connect(ctx.destination);
+
+    const beep = (t: number) => {
+      const o = ctx.createOscillator();
+      o.type = "square";
+      o.frequency.setValueAtTime(880, t);
+      o.connect(gain);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      o.start(t);
+      o.stop(t + 0.16);
+    };
+
+    const t0 = ctx.currentTime + 0.02;
+    beep(t0);
+    beep(t0 + 0.22);
+    window.setTimeout(() => {
+      ctx.close().catch(() => null);
+    }, 600);
+  } catch {
+    return;
+  }
+}
 
 export function RequestDetailsClient(props: {
   requestId: string;
@@ -40,8 +106,16 @@ export function RequestDetailsClient(props: {
   const [trip, setTrip] = useState<TripRow | null>(props.initialTrip);
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [proposalModalOpen, setProposalModalOpen] = useState(false);
+  const [proposalModalId, setProposalModalId] = useState<string | null>(null);
+  const lastNotifiedIdRef = useRef<string | null>(null);
 
   const accepted = useMemo(() => proposals.find((p) => p.accepted) ?? null, [proposals]);
+  const newestProposal = useMemo(() => proposals[0] ?? null, [proposals]);
+  const modalProposal = useMemo(
+    () => (proposalModalId ? proposals.find((p) => p.id === proposalModalId) ?? null : null),
+    [proposalModalId, proposals],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -73,6 +147,19 @@ export function RequestDetailsClient(props: {
     };
   }, [props.requestId]);
 
+  useEffect(() => {
+    if (!newestProposal) return;
+    if (accepted) return;
+    const id = newestProposal.id;
+    if (!id) return;
+    if (lastNotifiedIdRef.current === id) return;
+    lastNotifiedIdRef.current = id;
+    setProposalModalId(id);
+    setProposalModalOpen(true);
+    tryVibrate();
+    void tryBeep();
+  }, [accepted, newestProposal]);
+
   async function acceptProposal(proposalId: string) {
     setIsAccepting(proposalId);
     setError(null);
@@ -80,6 +167,7 @@ export function RequestDetailsClient(props: {
       const res = await fetch(`/api/proposals/${proposalId}/accept`, { method: "POST" });
       const json = (await res.json()) as { tripId?: string | null; error?: string };
       if (!res.ok) throw new Error(json.error || "Falha ao aceitar.");
+      setProposalModalOpen(false);
       router.push(`/payments/${props.requestId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao aceitar.");
@@ -90,6 +178,68 @@ export function RequestDetailsClient(props: {
 
   return (
     <div className="space-y-6">
+      <Modal
+        open={proposalModalOpen && !!modalProposal}
+        title="Proposta recebida"
+        onClose={() => setProposalModalOpen(false)}
+        footer={
+          modalProposal ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-md border px-4 py-2 text-sm font-semibold"
+                type="button"
+                onClick={() => setProposalModalOpen(false)}
+              >
+                Depois
+              </button>
+              <button
+                className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+                type="button"
+                disabled={!!accepted || isAccepting === modalProposal.id}
+                onClick={() => acceptProposal(modalProposal.id)}
+              >
+                {isAccepting === modalProposal.id ? "Aceitando..." : "Aceitar e pagar"}
+              </button>
+            </div>
+          ) : null
+        }
+      >
+        {modalProposal ? (
+          <div className="space-y-3 text-sm text-brand-text2">
+            <div className="rounded-xl border border-brand-border bg-brand-graphite/60 p-3">
+              <div className="text-xs font-semibold text-brand-text2">Preço</div>
+              <div className="mt-1 text-lg font-extrabold text-white">{formatBrl(Number(modalProposal.valor))}</div>
+              <div className="mt-2 text-xs font-semibold text-brand-text2">Chega em</div>
+              <div className="mt-1 text-base font-extrabold text-white">{Math.max(1, Math.round(Number(modalProposal.eta_minutes || 0)))} min</div>
+            </div>
+
+            <div className="rounded-xl border border-brand-border bg-brand-graphite/60 p-3">
+              <div className="text-xs font-semibold text-brand-text2">Reboque</div>
+              <div className="mt-1 text-base font-extrabold text-white">{modalProposal.partner?.empresa_nome ?? "Parceiro"}</div>
+              {modalProposal.partner?.caminhao_modelo || modalProposal.partner?.caminhao_tipo || modalProposal.partner?.caminhao_placa ? (
+                <div className="mt-1 text-xs text-brand-text2">
+                  {[modalProposal.partner?.caminhao_tipo, modalProposal.partner?.caminhao_modelo, modalProposal.partner?.caminhao_placa]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </div>
+              ) : null}
+              {modalProposal.partner?.whatsapp_number ? (
+                <div className="mt-2">
+                  <a
+                    className="inline-flex rounded-md border px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                    href={`https://wa.me/${String(modalProposal.partner.whatsapp_number).replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Falar no WhatsApp
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
       <div className="rounded-xl border bg-white p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -143,8 +293,9 @@ export function RequestDetailsClient(props: {
               <div key={p.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
                   <div className="font-medium">
-                    R$ {Number(p.valor).toFixed(2)} • ETA {p.eta_minutes} min
+                    {formatBrl(Number(p.valor))} • ETA {p.eta_minutes} min
                   </div>
+                  {p.partner?.empresa_nome ? <div className="mt-1 text-xs text-zinc-600">{p.partner.empresa_nome}</div> : null}
                   <div className="text-xs text-zinc-600">
                     {p.accepted ? "Aceita" : "Disponível"} • {new Date(p.created_at).toLocaleString("pt-BR")}
                   </div>
