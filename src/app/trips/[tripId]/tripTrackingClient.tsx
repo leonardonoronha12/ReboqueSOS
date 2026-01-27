@@ -24,6 +24,20 @@ function towMarkerSvgDataUrl() {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function haversineMeters(a: Coords, b: Coords) {
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  return R * c;
+}
+
 function formatBrl(cents: number | null) {
   if (!Number.isFinite(cents) || cents == null) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
@@ -40,16 +54,6 @@ function formatEta(minutes: number | null) {
   return `${h}h ${r}min`;
 }
 
-function initials(name: string) {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  const a = parts[0]?.[0] ?? "";
-  const b = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
-  return (a + b).toUpperCase();
-}
-
 function computeCancellationFeeCents(amountCents: number) {
   const pct = Math.round(amountCents * 0.1);
   const min = 1000;
@@ -62,6 +66,8 @@ export function TripTrackingClient(props: {
   requestId: string;
   pickup: Coords;
   pickupLabel: string;
+  dropoff: Coords | null;
+  dropoffLabel: string;
   initialTowLocation: Coords | null;
   trip: {
     status: string | null;
@@ -92,6 +98,10 @@ export function TripTrackingClient(props: {
   const intervalRef = useRef<number | null>(null);
   const lastCoordsRef = useRef<Coords | null>(null);
   const sendingRef = useRef(false);
+  const [phase, setPhase] = useState<"pickup" | "dropoff">("pickup");
+  const pickupArrivedRef = useRef(false);
+  const finishSentRef = useRef(false);
+  const [showFinishModal, setShowFinishModal] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -202,6 +212,14 @@ export function TripTrackingClient(props: {
     return props.pickup;
   }, [props.pickup, towLocation]);
 
+  const target = useMemo<Coords>(() => {
+    if (phase === "dropoff" && props.dropoff) return props.dropoff;
+    return props.pickup;
+  }, [phase, props.dropoff, props.pickup]);
+
+  const targetLabel = phase === "dropoff" ? props.dropoffLabel : props.pickupLabel;
+  const phaseLabel = phase === "dropoff" ? "Destino" : "Local do cliente";
+
   const canRoute = Boolean(isLoaded && hasGoogleMaps && towLocation);
 
   useEffect(() => {
@@ -218,7 +236,7 @@ export function TripTrackingClient(props: {
       service.route(
         {
           origin: towLocation as Coords,
-          destination: props.pickup,
+          destination: target,
           travelMode: g.maps.TravelMode.DRIVING,
         },
         (result, status) => {
@@ -232,10 +250,9 @@ export function TripTrackingClient(props: {
     } catch {
       return;
     }
-  }, [canRoute, props.pickup, towLocation]);
+  }, [canRoute, target, towLocation]);
 
   const partnerLabel = props.partner.name.trim() || "Reboque";
-  const partnerInitials = initials(partnerLabel);
   const isCanceled = cancelDone || props.trip.status === "cancelado" || props.trip.canceled_at != null;
   const paidAt = props.payment?.paid_at ? new Date(props.payment.paid_at) : null;
   const paidAtMs = paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt.getTime() : null;
@@ -256,6 +273,72 @@ export function TripTrackingClient(props: {
       anchor: new g.maps.Point(26, 26),
     };
   }, [hasGoogleMaps, towLocation]);
+
+  useEffect(() => {
+    if (!towLocation) return;
+    if (isCanceled) return;
+    if (!props.dropoff) return;
+    if (phase !== "pickup") return;
+    const meters = haversineMeters(towLocation, props.pickup);
+    if (meters > 120) return;
+    setPhase("dropoff");
+    pickupArrivedRef.current = true;
+  }, [isCanceled, phase, props.dropoff, props.pickup, towLocation]);
+
+  useEffect(() => {
+    if (!towLocation) return;
+    if (isCanceled) return;
+    if (!props.dropoff) return;
+    if (phase !== "dropoff") return;
+    const meters = haversineMeters(towLocation, props.dropoff);
+    if (meters > 120) return;
+    setShowFinishModal(true);
+  }, [isCanceled, phase, props.dropoff, towLocation]);
+
+  const updateTripStatus = useCallback(
+    async (status: "chegou" | "finalizado") => {
+      try {
+        const res = await fetch(`/api/trips/${encodeURIComponent(props.tripId)}/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (res.status === 401) return;
+      } catch {
+        return;
+      }
+    },
+    [props.tripId],
+  );
+
+  useEffect(() => {
+    if (!canTransmit) return;
+    if (isCanceled) return;
+    if (!pickupArrivedRef.current) return;
+    if (props.trip.status === "chegou" || props.trip.status === "em_servico" || props.trip.status === "concluido" || props.trip.status === "finalizado") {
+      return;
+    }
+    pickupArrivedRef.current = false;
+    void updateTripStatus("chegou");
+  }, [canTransmit, isCanceled, props.trip.status, updateTripStatus]);
+
+  useEffect(() => {
+    if (!canTransmit) return;
+    if (isCanceled) return;
+    if (!props.dropoff) return;
+    if (phase !== "dropoff") return;
+    if (!towLocation) return;
+    if (finishSentRef.current) return;
+    if (props.trip.status === "finalizado") return;
+    const meters = haversineMeters(towLocation, props.dropoff);
+    if (meters > 120) return;
+    finishSentRef.current = true;
+    void updateTripStatus("finalizado");
+  }, [canTransmit, isCanceled, phase, props.dropoff, props.trip.status, towLocation, updateTripStatus]);
+
+  useEffect(() => {
+    if (props.trip.status === "finalizado") setShowFinishModal(true);
+  }, [props.trip.status]);
 
   const redirectAfterCancel = useCallback(async () => {
     if (redirectInFlightRef.current) return;
@@ -333,6 +416,7 @@ export function TripTrackingClient(props: {
           options={{ disableDefaultUI: true, clickableIcons: false }}
         >
         <MarkerF position={props.pickup} />
+        {props.dropoff ? <MarkerF position={props.dropoff} /> : null}
         {route ? (
           <DirectionsRenderer
             directions={route}
@@ -346,19 +430,39 @@ export function TripTrackingClient(props: {
           <MarkerF
             position={towLocation}
             icon={partnerIcon}
-            label={
-              !partnerIcon
-                ? {
-                    text: partnerInitials,
-                    color: "#0b0b0d",
-                    fontWeight: "800",
-                    fontSize: "12px",
-                  }
-                : undefined
-            }
           />
         ) : null}
         </GoogleMap>
+
+      {showFinishModal ? (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-brand-border/20 bg-white p-5 shadow-soft">
+            <div className="text-lg font-extrabold text-brand-black">Corrida finalizada</div>
+            <div className="mt-2 text-sm text-brand-text2">{props.dropoffLabel}</div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white"
+                href={canTransmit ? "/partner" : `/requests/${encodeURIComponent(props.requestId)}/rating`}
+              >
+                {canTransmit ? "Voltar ao painel" : "Avaliar corrida"}
+              </a>
+              <a
+                className="rounded-md border px-4 py-2 text-sm font-semibold"
+                href={`/requests/${encodeURIComponent(props.requestId)}`}
+              >
+                Detalhes
+              </a>
+              <button
+                className="rounded-md border px-4 py-2 text-sm font-semibold"
+                type="button"
+                onClick={() => setShowFinishModal(false)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
         <div className="pointer-events-auto mx-auto w-full max-w-2xl rounded-3xl border border-brand-border/20 bg-white/95 p-4 shadow-soft backdrop-blur">
@@ -384,9 +488,9 @@ export function TripTrackingClient(props: {
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-brand-black/60">Reboque a caminho</div>
+              <div className="text-xs font-semibold text-brand-black/60">{phaseLabel}</div>
               <div className="mt-1 truncate text-base font-extrabold text-brand-black">{partnerLabel}</div>
-              <div className="mt-1 text-xs text-brand-text2">{props.pickupLabel}</div>
+              <div className="mt-1 text-xs text-brand-text2">{targetLabel}</div>
               {!towLocation ? (
                 <div className="mt-1 text-xs font-semibold text-brand-black/60">Aguardando GPS do reboque…</div>
               ) : null}

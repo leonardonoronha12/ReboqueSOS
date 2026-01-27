@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ req
 
   const { data: requestRow } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,accepted_proposal_id,telefone_cliente,modelo_veiculo,created_at,lat,lng,cliente_nome")
+    .select("id,local_cliente,cidade,status,accepted_proposal_id,telefone_cliente,modelo_veiculo,created_at,lat,lng,cliente_nome,destino_local,destino_lat,destino_lng")
     .eq("id", requestId)
     .maybeSingle();
 

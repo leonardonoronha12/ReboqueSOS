@@ -16,7 +16,14 @@ type TrackingResponse = {
     canceled_fee_cents?: number | null;
     canceled_after_seconds?: number | null;
   };
-  request?: { id?: string; status?: string | null; local_cliente?: string | null; pickup?: Coords | null };
+  request?: {
+    id?: string;
+    status?: string | null;
+    local_cliente?: string | null;
+    pickup?: Coords | null;
+    destino_local?: string | null;
+    dropoff?: Coords | null;
+  };
   payment?: { amount_cents?: number | null; status?: string | null; paid_at?: string | null } | null;
   partner?: { name?: string | null; whatsapp?: string | null; photoUrl?: string | null };
   error?: string;
@@ -142,6 +149,8 @@ export function TripTrackingPageClient(props: { tripId: string }) {
   const requestId = data?.trip?.request_id ? String(data.trip.request_id) : "";
   const pickup = data?.request?.pickup ?? null;
   const pickupLabel = data?.request?.local_cliente ? String(data.request.local_cliente) : "Local do cliente";
+  const dropoff = data?.request?.dropoff ?? null;
+  const dropoffLabel = data?.request?.destino_local ? String(data.request.destino_local) : "Destino";
 
   if (!tripId || !requestId || !pickup) {
     return (
@@ -160,6 +169,8 @@ export function TripTrackingPageClient(props: { tripId: string }) {
         requestId={requestId}
         pickup={pickup}
         pickupLabel={pickupLabel}
+        dropoff={dropoff}
+        dropoffLabel={dropoffLabel}
         initialTowLocation={null}
         trip={{
           status: data?.trip?.status ? String(data.trip.status) : null,

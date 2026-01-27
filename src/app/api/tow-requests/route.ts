@@ -19,6 +19,10 @@ export async function POST(request: Request) {
       endereco?: string;
       lat?: number | null;
       lng?: number | null;
+      destino_local?: string;
+      destino_endereco?: string;
+      destino_lat?: number | null;
+      destino_lng?: number | null;
       telefone?: string;
       modelo_veiculo?: string;
     } = {};
@@ -35,6 +39,9 @@ export async function POST(request: Request) {
     let localCliente = String(body.local_cliente ?? body.endereco ?? "").trim();
     let lat = typeof body.lat === "number" ? body.lat : null;
     let lng = typeof body.lng === "number" ? body.lng : null;
+    let destinoLocal = String(body.destino_local ?? body.destino_endereco ?? "").trim();
+    let destinoLat = typeof body.destino_lat === "number" ? body.destino_lat : null;
+    let destinoLng = typeof body.destino_lng === "number" ? body.destino_lng : null;
     const telefone = String(body.telefone ?? "").trim();
     const modeloVeiculo = String(body.modelo_veiculo ?? "").trim();
 
@@ -44,6 +51,11 @@ export async function POST(request: Request) {
 
     if (lat != null && lng != null && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
       return NextResponse.json({ error: "Coordenadas inválidas." }, { status: 400 });
+    }
+
+    if (!destinoLocal) return NextResponse.json({ error: "Informe o local de destino." }, { status: 400 });
+    if (destinoLat != null && destinoLng != null && (!Number.isFinite(destinoLat) || !Number.isFinite(destinoLng))) {
+      return NextResponse.json({ error: "Coordenadas do destino inválidas." }, { status: 400 });
     }
 
     if ((lat == null || lng == null) && localCliente) {
@@ -56,6 +68,20 @@ export async function POST(request: Request) {
       } catch (e) {
         return NextResponse.json(
           { error: e instanceof Error ? e.message : "Falha ao geocodificar endereço." },
+          { status: 400 },
+        );
+      }
+    }
+
+    if ((destinoLat == null || destinoLng == null) && destinoLocal) {
+      try {
+        const details = await geocodeAddressDetails({ address: `${destinoLocal}, RJ, Brasil` });
+        destinoLat = details.location.lat;
+        destinoLng = details.location.lng;
+        if (details.formattedAddress) destinoLocal = details.formattedAddress;
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Falha ao geocodificar destino." },
           { status: 400 },
         );
       }
@@ -76,6 +102,9 @@ export async function POST(request: Request) {
     if (lat == null || lng == null) {
       return NextResponse.json({ error: "Informe o endereço ou selecione no mapa." }, { status: 400 });
     }
+    if (destinoLat == null || destinoLng == null) {
+      return NextResponse.json({ error: "Informe o destino ou selecione um endereço válido." }, { status: 400 });
+    }
 
     const supabaseAdmin = createSupabaseAdminClient();
 
@@ -88,11 +117,14 @@ export async function POST(request: Request) {
         cidade,
         lat,
         lng,
+        destino_local: destinoLocal,
+        destino_lat: destinoLat,
+        destino_lng: destinoLng,
         telefone_cliente: telefone,
         modelo_veiculo: modeloVeiculo,
         status: "PENDENTE",
       })
-      .select("id,local_cliente,cidade,lat,lng")
+      .select("id,local_cliente,cidade,lat,lng,destino_local,destino_lat,destino_lng")
       .single();
 
     if (reqErr) {
@@ -140,6 +172,7 @@ export async function POST(request: Request) {
           body:
             `🚨 Novo chamado ReboqueSOS\n` +
             `📍 Local: ${reqRow.local_cliente}\n` +
+            `🏁 Destino: ${String((reqRow as { destino_local?: string | null }).destino_local ?? destinoLocal)}\n` +
             (p.hasDistance ? `📌 Distância: ${(p as { distanceKm: number }).distanceKm.toFixed(1)} km\n` : "") +
             `🚗 Veículo: ${modeloVeiculo}\n` +
             `📞 Telefone: ${telefone}\n` +

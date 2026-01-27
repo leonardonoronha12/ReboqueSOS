@@ -90,6 +90,11 @@ export function RequestForm() {
   const [addressPredictions, setAddressPredictions] = useState<AddressPrediction[]>([]);
   const [isAddressAutocompleteOpen, setIsAddressAutocompleteOpen] = useState(false);
   const [isLoadingAddressAutocomplete, setIsLoadingAddressAutocomplete] = useState(false);
+  const [destinoEndereco, setDestinoEndereco] = useState("");
+  const [destinoCoords, setDestinoCoords] = useState<Coords | null>(null);
+  const [destinoPredictions, setDestinoPredictions] = useState<AddressPrediction[]>([]);
+  const [isDestinoAutocompleteOpen, setIsDestinoAutocompleteOpen] = useState(false);
+  const [isLoadingDestinoAutocomplete, setIsLoadingDestinoAutocomplete] = useState(false);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded: isGoogleMapsLoaded } = useJsApiLoader({
@@ -357,8 +362,9 @@ export function RequestForm() {
       const displayName = nome.trim();
       const tel = telefone.trim();
       const model = modeloVeiculo.trim();
-      if (!displayName || !tel || !model) {
-        setSheetError("Informe nome, telefone e modelo do veículo.");
+      const destino = destinoEndereco.trim();
+      if (!displayName || !tel || !model || !destino) {
+        setSheetError("Informe nome, telefone, modelo do veículo e destino.");
         return;
       }
 
@@ -366,6 +372,29 @@ export function RequestForm() {
       if (!resolved) {
         setSheetError("Informe um endereço ou use a localização do dispositivo.");
         return;
+      }
+
+      let destinoFinal = destinoCoords;
+      let destinoAddress = destino;
+      if (!destinoFinal) {
+        const res = await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: destino }),
+        });
+        const json = await readJsonMaybe<{
+          location?: { lat: number; lng: number };
+          formattedAddress?: string | null;
+          error?: string;
+        }>(res);
+        if (!res.ok || !json?.location) {
+          setSheetError(json?.error || `Não foi possível localizar o destino. (HTTP ${res.status})`);
+          return;
+        }
+        destinoFinal = { lat: json.location.lat, lng: json.location.lng };
+        destinoAddress = String(json.formattedAddress ?? destino);
+        setDestinoCoords(destinoFinal);
+        setDestinoEndereco(destinoAddress);
       }
 
       setOpenSheet(false);
@@ -379,6 +408,9 @@ export function RequestForm() {
           local_cliente: resolved.address || undefined,
           lat: resolved.coords.lat,
           lng: resolved.coords.lng,
+          destino_local: destinoAddress || undefined,
+          destino_lat: destinoFinal.lat,
+          destino_lng: destinoFinal.lng,
           telefone: tel,
           modelo_veiculo: model,
         }),
@@ -466,6 +498,63 @@ export function RequestForm() {
     };
   }, [apiKey, coords?.lat, coords?.lng, endereco, isAddressAutocompleteOpen, isGoogleMapsLoaded]);
 
+  useEffect(() => {
+    const query = destinoEndereco.trim();
+    if (!apiKey || !isGoogleMapsLoaded) {
+      setDestinoPredictions([]);
+      setIsLoadingDestinoAutocomplete(false);
+      return;
+    }
+
+    if (!isDestinoAutocompleteOpen || query.length < 3) {
+      setDestinoPredictions([]);
+      setIsLoadingDestinoAutocomplete(false);
+      return;
+    }
+
+    const google = (window as unknown as { google?: GoogleLike }).google;
+    const ServiceCtor = google?.maps?.places?.AutocompleteService;
+    if (!ServiceCtor) {
+      setDestinoPredictions([]);
+      setIsLoadingDestinoAutocomplete(false);
+      return;
+    }
+
+    const service = new ServiceCtor();
+    setIsLoadingDestinoAutocomplete(true);
+
+    const timeoutId = window.setTimeout(() => {
+      const req: AutocompleteRequest = {
+        input: query,
+        componentRestrictions: { country: "br" },
+      };
+
+      service.getPlacePredictions(req, (preds, status) => {
+        if (!isDestinoAutocompleteOpen) return;
+        if (status !== "OK" || !Array.isArray(preds) || preds.length === 0) {
+          setDestinoPredictions([]);
+          setIsLoadingDestinoAutocomplete(false);
+          return;
+        }
+
+        setDestinoPredictions(
+          preds
+            .map((p) => ({
+              description: String(p?.description ?? "").trim(),
+              placeId: String(p?.place_id ?? "").trim(),
+            }))
+            .filter((p) => p.description && p.placeId)
+            .slice(0, 6),
+        );
+        setIsLoadingDestinoAutocomplete(false);
+      });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [apiKey, destinoEndereco, isDestinoAutocompleteOpen, isGoogleMapsLoaded]);
+
   async function selectAddressPrediction(p: AddressPrediction) {
     setEndereco(p.description);
     setIsAddressAutocompleteOpen(false);
@@ -488,6 +577,30 @@ export function RequestForm() {
       setEndereco(String(json.formattedAddress ?? p.description));
     } catch (e) {
       setSheetError(e instanceof Error ? e.message : "Não foi possível localizar o endereço.");
+    }
+  }
+
+  async function selectDestinoPrediction(p: AddressPrediction) {
+    setDestinoEndereco(p.description);
+    setIsDestinoAutocompleteOpen(false);
+    setDestinoPredictions([]);
+
+    try {
+      const res = await fetch("/api/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: p.description }),
+      });
+      const json = await readJsonMaybe<{
+        location?: { lat: number; lng: number };
+        formattedAddress?: string | null;
+        error?: string;
+      }>(res);
+      if (!res.ok || !json?.location) throw new Error(json?.error || `Não foi possível localizar o endereço. (HTTP ${res.status})`);
+      setDestinoCoords({ lat: json.location.lat, lng: json.location.lng });
+      setDestinoEndereco(String(json.formattedAddress ?? p.description));
+    } catch (e) {
+      setSheetError(e instanceof Error ? e.message : "Não foi possível localizar o endereço de destino.");
     }
   }
 
@@ -625,6 +738,55 @@ export function RequestForm() {
                     </div>
                   ) : endereco.trim().length >= 3 ? (
                     <div className="px-3 py-2 text-xs font-semibold text-brand-text2">Nenhum endereço encontrado.</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-bold text-brand-black">Destino do veículo</div>
+            <div className="relative">
+              <input
+                className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
+                placeholder="Para onde levar o carro?"
+                value={destinoEndereco}
+                onChange={(e) => {
+                  setDestinoEndereco(e.target.value);
+                  setDestinoCoords(null);
+                  setSheetError(null);
+                }}
+                onFocus={() => setIsDestinoAutocompleteOpen(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setIsDestinoAutocompleteOpen(false), 150);
+                }}
+                role="combobox"
+                aria-expanded={isDestinoAutocompleteOpen}
+                aria-controls="destino-autocomplete-listbox"
+                aria-autocomplete="list"
+              />
+
+              {apiKey && isGoogleMapsLoaded && isDestinoAutocompleteOpen ? (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-brand-border/20 bg-white shadow-sm">
+                  {isLoadingDestinoAutocomplete ? (
+                    <div className="px-3 py-2 text-xs font-semibold text-brand-text2">Buscando destinos…</div>
+                  ) : destinoPredictions.length ? (
+                    <div id="destino-autocomplete-listbox" role="listbox" className="max-h-56 overflow-auto py-1">
+                      {destinoPredictions.map((p) => (
+                        <button
+                          key={p.placeId}
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm text-brand-black hover:bg-brand-yellow/10"
+                          role="option"
+                          aria-selected={false}
+                          onClick={() => void selectDestinoPrediction(p)}
+                        >
+                          {p.description}
+                        </button>
+                      ))}
+                    </div>
+                  ) : destinoEndereco.trim().length >= 3 ? (
+                    <div className="px-3 py-2 text-xs font-semibold text-brand-text2">Nenhum destino encontrado.</div>
                   ) : null}
                 </div>
               ) : null}

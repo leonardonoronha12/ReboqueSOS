@@ -25,6 +25,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
       ? { lat: reqRow.lat, lng: reqRow.lng }
       : null;
 
+  const dropoff =
+    reqRow &&
+    typeof (reqRow as { destino_lat?: number | null }).destino_lat === "number" &&
+    typeof (reqRow as { destino_lng?: number | null }).destino_lng === "number" &&
+    Number.isFinite((reqRow as { destino_lat?: number | null }).destino_lat as number) &&
+    Number.isFinite((reqRow as { destino_lng?: number | null }).destino_lng as number)
+      ? {
+          lat: (reqRow as { destino_lat: number }).destino_lat,
+          lng: (reqRow as { destino_lng: number }).destino_lng,
+        }
+      : null;
+
   const { data: partner } = trip.driver_id
     ? await supabaseAdmin
         .from("tow_partners")
@@ -65,6 +77,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tri
         status: reqRow?.status ?? null,
         local_cliente: reqRow?.local_cliente ?? null,
         pickup,
+        destino_local: (reqRow as { destino_local?: string | null })?.destino_local ?? null,
+        dropoff,
       },
       payment: payment
         ? {
