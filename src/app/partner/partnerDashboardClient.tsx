@@ -81,11 +81,38 @@ async function readJsonResponse<T>(res: Response) {
   }
 }
 
+let sharedAlertAudioCtx: AudioContext | null = null;
+
+function getAlertAudioContext() {
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (sharedAlertAudioCtx && sharedAlertAudioCtx.state !== "closed") return sharedAlertAudioCtx;
+  sharedAlertAudioCtx = new AudioCtx();
+  return sharedAlertAudioCtx;
+}
+
+async function unlockAlertAudio() {
+  try {
+    const ctx = getAlertAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+    return ctx.state === "running";
+  } catch {
+    return false;
+  }
+}
+
 function playAlertTone() {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    const ctx = getAlertAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      void ctx.resume().catch(() => null);
+      return;
+    }
+
     const now = ctx.currentTime;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
@@ -109,7 +136,7 @@ function playAlertTone() {
       osc.stop(now + b.t + b.d + 0.02);
     }
 
-    window.setTimeout(() => void ctx.close().catch(() => null), 1200);
+    window.setTimeout(() => gain.disconnect(), 1200);
   } catch {
     return;
   }
@@ -122,6 +149,7 @@ function RequestAlertModal(props: {
   onClose: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  onTestSound: () => void;
 }) {
   const req = props.request;
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -202,6 +230,13 @@ function RequestAlertModal(props: {
               onClick={props.onToggleSound}
             >
               {props.soundEnabled ? "Som: ligado" : "Som: desligado"}
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-2 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
+              onClick={props.onTestSound}
+            >
+              Testar som
             </button>
             <button
               type="button"
@@ -308,6 +343,7 @@ export function PartnerDashboardClient(props: {
   const [isPayouting, setIsPayouting] = useState(false);
   const [payoutMessage, setPayoutMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundReady, setSoundReady] = useState(false);
 
   const [requests, setRequests] = useState<RequestRow[]>(props.requests);
   const [alertOpen, setAlertOpen] = useState(false);
@@ -323,6 +359,19 @@ export function PartnerDashboardClient(props: {
     if (!ativo) return "red" as const;
     return "green" as const;
   }, [ativo]);
+
+  async function testSound() {
+    const ok = await unlockAlertAudio();
+    setSoundReady(ok);
+    if (ok) playAlertTone();
+  }
+
+  async function toggleSound() {
+    setSoundEnabled((v) => !v);
+    const ok = await unlockAlertAudio();
+    setSoundReady(ok);
+    if (ok) playAlertTone();
+  }
 
   useEffect(() => {
     setRequests(props.requests);
@@ -496,6 +545,11 @@ export function PartnerDashboardClient(props: {
     setIsUpdating(true);
     setAtivo(next);
 
+    if (soundEnabled) {
+      const ok = await unlockAlertAudio();
+      setSoundReady(ok);
+    }
+
     try {
       const res = await fetch("/api/partner/active", {
         method: "PATCH",
@@ -560,7 +614,8 @@ export function PartnerDashboardClient(props: {
         myCoords={myCoords}
         onClose={() => setAlertOpen(false)}
         soundEnabled={soundEnabled}
-        onToggleSound={() => setSoundEnabled((v) => !v)}
+        onToggleSound={toggleSound}
+        onTestSound={testSound}
       />
 
       <div className="card relative overflow-hidden p-5 sm:p-6">
@@ -587,6 +642,13 @@ export function PartnerDashboardClient(props: {
               onClick={toggleActive}
             >
               {isUpdating ? "Atualizando..." : ativo ? "Ficar inativo" : "Ficar ativo"}
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
+              onClick={testSound}
+            >
+              {soundEnabled ? (soundReady ? "Som OK" : "Ativar som") : "Som desligado"}
             </button>
             {updateError ? <div className="text-right text-xs font-semibold text-brand-red">{updateError}</div> : null}
           </div>
