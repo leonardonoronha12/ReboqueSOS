@@ -14,12 +14,16 @@ export async function GET() {
     return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
   }
 
+  const now = Date.now();
+  const recentWindowMs = 20 * 60 * 1000;
+
   const supabaseAdmin = createSupabaseAdminClient();
   const { data: trips, error: tripsErr } = await supabaseAdmin
     .from("tow_trips")
-    .select("id,request_id,status,created_at")
+    .select("id,request_id,status,updated_at,created_at")
     .eq("driver_id", user.id)
-    .order("created_at", { ascending: false })
+    .in("status", ["a_caminho", "chegou", "em_servico"])
+    .order("updated_at", { ascending: false })
     .limit(10);
 
   if (tripsErr) return NextResponse.json({ error: tripsErr.message }, { status: 500 });
@@ -29,25 +33,35 @@ export async function GET() {
   const requestIds = Array.from(new Set(list.map((t) => String(t.request_id ?? "")).filter(Boolean)));
   if (!requestIds.length) return NextResponse.json({ tripId: null, requestId: null }, { status: 200 });
 
-  const { data: requests, error: reqErr } = await supabaseAdmin
-    .from("tow_requests")
-    .select("id,status")
-    .in("id", requestIds);
+  const { data: payments, error: payErr } = await supabaseAdmin
+    .from("payments")
+    .select("request_id,status,updated_at")
+    .in("request_id", requestIds);
 
-  if (reqErr) return NextResponse.json({ error: reqErr.message }, { status: 500 });
+  if (payErr) return NextResponse.json({ error: payErr.message }, { status: 500 });
 
-  const statusById = new Map<string, string>();
-  for (const r of requests ?? []) {
-    statusById.set(String(r.id), String(r.status ?? ""));
+  const paidAtByRequestId = new Map<string, number>();
+  for (const p of payments ?? []) {
+    const requestId = String(p.request_id ?? "");
+    if (!requestId) continue;
+    if (String(p.status ?? "") !== "succeeded") continue;
+    const t = new Date(String(p.updated_at ?? "")).getTime();
+    if (!Number.isFinite(t)) continue;
+    paidAtByRequestId.set(requestId, t);
   }
 
+  let best: { tripId: string; requestId: string; paidAtMs: number } | null = null;
   for (const t of list) {
     const requestId = String(t.request_id ?? "");
     if (!requestId) continue;
-    if (statusById.get(requestId) !== "PAGO") continue;
-    return NextResponse.json({ tripId: String(t.id), requestId }, { status: 200 });
+    const paidAtMs = paidAtByRequestId.get(requestId);
+    if (!paidAtMs) continue;
+    if (now - paidAtMs > recentWindowMs) continue;
+    const tripId = String(t.id ?? "");
+    if (!tripId) continue;
+    if (!best || paidAtMs > best.paidAtMs) best = { tripId, requestId, paidAtMs };
   }
 
+  if (best) return NextResponse.json({ tripId: best.tripId, requestId: best.requestId }, { status: 200 });
   return NextResponse.json({ tripId: null, requestId: null }, { status: 200 });
 }
-
