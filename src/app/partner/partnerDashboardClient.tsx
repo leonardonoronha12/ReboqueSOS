@@ -217,9 +217,8 @@ function RequestAlertModal(props: {
   request: RequestRow | null;
   myCoords: Coords | null;
   onClose: () => void;
-  soundEnabled: boolean;
-  onToggleSound: () => void;
   onTestSound: () => void;
+  soundReady: boolean;
 }) {
   const req = props.request;
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -297,16 +296,9 @@ function RequestAlertModal(props: {
             <button
               type="button"
               className="rounded-2xl border border-brand-border/20 bg-white px-4 py-2 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
-              onClick={props.onToggleSound}
-            >
-              {props.soundEnabled ? "Som: ligado" : "Som: desligado"}
-            </button>
-            <button
-              type="button"
-              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-2 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
               onClick={props.onTestSound}
             >
-              Testar som
+              {props.soundReady ? "Testar som" : "Ativar/Testar som"}
             </button>
             <button
               type="button"
@@ -412,7 +404,6 @@ export function PartnerDashboardClient(props: {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [isPayouting, setIsPayouting] = useState(false);
   const [payoutMessage, setPayoutMessage] = useState<string | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundReady, setSoundReady] = useState(false);
 
   const [requests, setRequests] = useState<RequestRow[]>(props.requests);
@@ -430,17 +421,16 @@ export function PartnerDashboardClient(props: {
     return "green" as const;
   }, [ativo]);
 
-  async function testSound() {
+  async function playShortAlert() {
     const ok = await unlockAlertAudio();
     setSoundReady(ok);
     if (ok) startAlertToneShort();
   }
 
-  async function toggleSound() {
-    setSoundEnabled((v) => !v);
+  async function playLongAlert() {
     const ok = await unlockAlertAudio();
     setSoundReady(ok);
-    if (ok) startAlertToneShort();
+    if (ok) startAlertToneLong();
   }
 
   useEffect(() => {
@@ -467,6 +457,28 @@ export function PartnerDashboardClient(props: {
     );
     return () => navigator.geolocation.clearWatch(id);
   }, [ativo]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const tryUnlock = () => {
+      void unlockAlertAudio().then((ok) => {
+        if (!cancelled) setSoundReady(ok);
+      });
+    };
+
+    tryUnlock();
+    window.addEventListener("pointerdown", tryUnlock, { passive: true });
+    window.addEventListener("keydown", tryUnlock);
+    document.addEventListener("visibilitychange", tryUnlock);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pointerdown", tryUnlock);
+      window.removeEventListener("keydown", tryUnlock);
+      document.removeEventListener("visibilitychange", tryUnlock);
+    };
+  }, []);
 
   useEffect(() => {
     if (!ativo) return;
@@ -516,7 +528,7 @@ export function PartnerDashboardClient(props: {
           setRequests((prev) => (prev.some((r) => r.id === normalized.id) ? prev : [normalized, ...prev].slice(0, 20)));
           setAlertRequest(normalized);
           setAlertOpen(true);
-          if (soundEnabled) startAlertToneLong();
+          void playLongAlert();
         },
       )
       .subscribe();
@@ -527,7 +539,7 @@ export function PartnerDashboardClient(props: {
         void supabase.removeChannel(channel);
       }
     };
-  }, [ativo, props.cidade, props.supabaseAnonKey, props.supabaseUrl, soundEnabled]);
+  }, [ativo, props.cidade, props.supabaseAnonKey, props.supabaseUrl]);
 
   useEffect(() => {
     if (!ativo) return;
@@ -564,7 +576,7 @@ export function PartnerDashboardClient(props: {
             seenRequestIdsRef.current.add(newest.id);
             setAlertRequest(newest);
             setAlertOpen(true);
-            if (soundEnabled) startAlertToneLong();
+            void playLongAlert();
           }
         }
       } catch {
@@ -580,7 +592,7 @@ export function PartnerDashboardClient(props: {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [ativo, props.cidade, soundEnabled]);
+  }, [ativo, props.cidade]);
 
   async function loadBalance() {
     setBalanceError(null);
@@ -615,10 +627,8 @@ export function PartnerDashboardClient(props: {
     setIsUpdating(true);
     setAtivo(next);
 
-    if (soundEnabled) {
-      const ok = await unlockAlertAudio();
-      setSoundReady(ok);
-    }
+    const ok = await unlockAlertAudio();
+    setSoundReady(ok);
     if (!next) stopAlertTone();
 
     try {
@@ -687,9 +697,8 @@ export function PartnerDashboardClient(props: {
           stopAlertTone();
           setAlertOpen(false);
         }}
-        soundEnabled={soundEnabled}
-        onToggleSound={toggleSound}
-        onTestSound={testSound}
+        onTestSound={playShortAlert}
+        soundReady={soundReady}
       />
 
       <div className="card relative overflow-hidden p-5 sm:p-6">
@@ -720,9 +729,9 @@ export function PartnerDashboardClient(props: {
             <button
               type="button"
               className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
-              onClick={testSound}
+              onClick={playShortAlert}
             >
-              {soundEnabled ? (soundReady ? "Som OK" : "Ativar som") : "Som desligado"}
+              {soundReady ? "Som OK" : "Ativar som"}
             </button>
             {updateError ? <div className="text-right text-xs font-semibold text-brand-red">{updateError}</div> : null}
           </div>
