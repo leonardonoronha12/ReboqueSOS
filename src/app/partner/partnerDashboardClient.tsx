@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { DirectionsRenderer, GoogleMap, useJsApiLoader } from "@react-google-maps/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { haversineKm } from "@/lib/geo";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type PartnerRow = {
   empresa_nome: string | null;
@@ -20,6 +24,11 @@ type RequestRow = {
   cidade: string;
   status: string;
   created_at: string;
+  lat: number | null;
+  lng: number | null;
+  cliente_nome: string | null;
+  telefone_cliente: string | null;
+  modelo_veiculo: string | null;
 };
 
 type TripRow = {
@@ -28,6 +37,8 @@ type TripRow = {
   status: string;
   created_at: string;
 };
+
+type Coords = { lat: number; lng: number };
 
 function StatusPill(props: { label: string; tone?: "yellow" | "red" | "green" | "gray" }) {
   const tone = props.tone ?? "gray";
@@ -70,10 +81,217 @@ async function readJsonResponse<T>(res: Response) {
   }
 }
 
+function playAlertTone() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.connect(ctx.destination);
+
+    const beeps = [
+      { t: 0.0, d: 0.12, f: 880 },
+      { t: 0.18, d: 0.12, f: 880 },
+      { t: 0.36, d: 0.18, f: 988 },
+    ];
+
+    for (const b of beeps) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(b.f, now + b.t);
+      osc.connect(gain);
+      gain.gain.setValueAtTime(0.0001, now + b.t);
+      gain.gain.linearRampToValueAtTime(0.12, now + b.t + 0.01);
+      gain.gain.linearRampToValueAtTime(0.0001, now + b.t + b.d);
+      osc.start(now + b.t);
+      osc.stop(now + b.t + b.d + 0.02);
+    }
+
+    window.setTimeout(() => void ctx.close().catch(() => null), 1200);
+  } catch {
+    return;
+  }
+}
+
+function RequestAlertModal(props: {
+  open: boolean;
+  request: RequestRow | null;
+  myCoords: Coords | null;
+  onClose: () => void;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
+}) {
+  const req = props.request;
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const { isLoaded } = useJsApiLoader({
+    id: "reboquesos-partner-alert-map",
+    googleMapsApiKey: apiKey,
+    language: "pt-BR",
+    region: "BR",
+  });
+
+  const pickupCoords = useMemo<Coords | null>(() => {
+    if (!req || typeof req.lat !== "number" || typeof req.lng !== "number") return null;
+    if (!Number.isFinite(req.lat) || !Number.isFinite(req.lng)) return null;
+    return { lat: req.lat, lng: req.lng };
+  }, [req]);
+
+  const [route, setRoute] = useState<google.maps.DirectionsResult | null>(null);
+  const [routeKm, setRouteKm] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!props.open) return;
+    if (!isLoaded) return;
+    if (!props.myCoords || !pickupCoords) return;
+    const service = new google.maps.DirectionsService();
+    service.route(
+      {
+        origin: props.myCoords,
+        destination: pickupCoords,
+        travelMode: google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status !== "OK" || !result) return;
+        setRoute(result);
+        const meters =
+          result.routes?.[0]?.legs?.reduce((acc, leg) => acc + (leg.distance?.value ?? 0), 0) ?? 0;
+        if (meters > 0) setRouteKm(meters / 1000);
+      },
+    );
+  }, [isLoaded, pickupCoords, props.myCoords, props.open]);
+
+  const directKm = useMemo(() => {
+    if (!props.myCoords || !pickupCoords) return null;
+    return haversineKm(props.myCoords, pickupCoords);
+  }, [pickupCoords, props.myCoords]);
+
+  if (!props.open || !req) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50"
+        onClick={props.onClose}
+        aria-label="Fechar"
+      />
+      <div className="relative w-full max-w-3xl rounded-3xl border border-brand-border/20 bg-white p-5 shadow-soft">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-brand-black/60">Nova solicitação</div>
+            <div className="mt-1 truncate text-lg font-extrabold text-brand-black">{req.local_cliente}</div>
+            <div className="mt-1 text-xs text-brand-text2">
+              {req.cidade} • {formatDateTime(req.created_at)}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusPill label={req.status} tone="yellow" />
+              {typeof routeKm === "number" ? (
+                <StatusPill label={`${routeKm.toFixed(1)} km (rota)`} tone="green" />
+              ) : typeof directKm === "number" ? (
+                <StatusPill label={`${directKm.toFixed(1)} km (direto)`} />
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:items-end">
+            <button
+              type="button"
+              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-2 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
+              onClick={props.onToggleSound}
+            >
+              {props.soundEnabled ? "Som: ligado" : "Som: desligado"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={props.onClose}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
+            <div className="text-sm font-extrabold text-brand-black">Detalhes</div>
+            <div className="mt-3 space-y-2 text-sm text-brand-black/80">
+              <div>
+                <span className="font-semibold text-brand-black">Veículo:</span>{" "}
+                {req.modelo_veiculo ?? "—"}
+              </div>
+              <div>
+                <span className="font-semibold text-brand-black">Cliente:</span>{" "}
+                {req.cliente_nome ?? "—"}
+              </div>
+              <div>
+                <span className="font-semibold text-brand-black">Telefone:</span>{" "}
+                {req.telefone_cliente ?? "—"}
+              </div>
+              <div>
+                <span className="font-semibold text-brand-black">Sua localização:</span>{" "}
+                {props.myCoords ? `${props.myCoords.lat.toFixed(5)}, ${props.myCoords.lng.toFixed(5)}` : "GPS não disponível"}
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a className="btn-primary" href={`/partner/requests/${req.id}`}>
+                Abrir solicitação
+              </a>
+              <a
+                className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${req.lat ?? ""},${req.lng ?? ""}`)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Abrir no Google Maps
+              </a>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
+            <div className="text-sm font-extrabold text-brand-black">Mapa e rota</div>
+            <div className="mt-3">
+              {!apiKey ? (
+                <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+                  Google Maps não configurado.
+                </div>
+              ) : !pickupCoords ? (
+                <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+                  Coordenadas do pedido não disponíveis.
+                </div>
+              ) : !props.myCoords ? (
+                <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+                  Ative o GPS do navegador para ver a rota.
+                </div>
+              ) : !isLoaded ? (
+                <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+                  Carregando mapa...
+                </div>
+              ) : (
+                <GoogleMap
+                  mapContainerClassName="h-64 w-full overflow-hidden rounded-2xl"
+                  center={props.myCoords}
+                  zoom={12}
+                  options={{ disableDefaultUI: true, zoomControl: true }}
+                >
+                  {route ? <DirectionsRenderer directions={route} options={{ suppressMarkers: false }} /> : null}
+                </GoogleMap>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PartnerDashboardClient(props: {
   profile: ProfileRow;
   partner: PartnerRow | null;
   cidade: string;
+  supabaseUrl: string | null;
+  supabaseAnonKey: string | null;
   requests: RequestRow[];
   trips: TripRow[];
 }) {
@@ -89,14 +307,101 @@ export function PartnerDashboardClient(props: {
   const [isCreatingLink, setIsCreatingLink] = useState(false);
   const [isPayouting, setIsPayouting] = useState(false);
   const [payoutMessage, setPayoutMessage] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
-  const requestCount = props.requests.length;
+  const [requests, setRequests] = useState<RequestRow[]>(props.requests);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertRequest, setAlertRequest] = useState<RequestRow | null>(null);
+  const [myCoords, setMyCoords] = useState<Coords | null>(null);
+  const seenRequestIdsRef = useRef(new Set<string>());
+
+  const requestCount = requests.length;
   const tripCount = props.trips.length;
 
   const statusTone = useMemo(() => {
     if (!ativo) return "red" as const;
     return "green" as const;
   }, [ativo]);
+
+  useEffect(() => {
+    setRequests(props.requests);
+  }, [props.requests]);
+
+  useEffect(() => {
+    if (!ativo) return;
+    if (!navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) setMyCoords({ lat, lng });
+      },
+      () => null,
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [ativo]);
+
+  useEffect(() => {
+    if (!ativo) return;
+    if (!props.supabaseUrl || !props.supabaseAnonKey) return;
+    let cancelled = false;
+    let supabase: ReturnType<typeof createSupabaseBrowserClient> | null = null;
+    try {
+      supabase = createSupabaseBrowserClient({ url: props.supabaseUrl, anonKey: props.supabaseAnonKey });
+    } catch {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`partner_alerts:${props.cidade}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "tow_requests", filter: `cidade=eq.${props.cidade}` },
+        async (payload) => {
+          if (cancelled) return;
+          const row = payload.new as { id?: string; status?: string };
+          const id = String(row?.id ?? "");
+          if (!id) return;
+          if (seenRequestIdsRef.current.has(id)) return;
+          seenRequestIdsRef.current.add(id);
+
+          const status = String(row?.status ?? "");
+          if (!["PENDENTE", "PROPOSTA_RECEBIDA"].includes(status)) return;
+
+          const res = await fetch(`/api/public/requests/${id}`, { cache: "no-store" }).catch(() => null);
+          const json = res ? await readJsonResponse<{ request?: Partial<RequestRow> }>(res) : null;
+          const req = json?.request;
+          if (!req || typeof req.id !== "string") return;
+
+          const normalized: RequestRow = {
+            id: req.id,
+            local_cliente: String(req.local_cliente ?? ""),
+            cidade: String(req.cidade ?? props.cidade),
+            status: String(req.status ?? status),
+            created_at: String(req.created_at ?? new Date().toISOString()),
+            lat: typeof req.lat === "number" ? req.lat : null,
+            lng: typeof req.lng === "number" ? req.lng : null,
+            cliente_nome: typeof req.cliente_nome === "string" ? req.cliente_nome : null,
+            telefone_cliente: typeof req.telefone_cliente === "string" ? req.telefone_cliente : null,
+            modelo_veiculo: typeof req.modelo_veiculo === "string" ? req.modelo_veiculo : null,
+          };
+
+          setRequests((prev) => (prev.some((r) => r.id === normalized.id) ? prev : [normalized, ...prev].slice(0, 20)));
+          setAlertRequest(normalized);
+          setAlertOpen(true);
+          if (soundEnabled) playAlertTone();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      if (supabase) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [ativo, props.cidade, props.supabaseAnonKey, props.supabaseUrl, soundEnabled]);
 
   async function loadBalance() {
     setBalanceError(null);
@@ -188,6 +493,16 @@ export function PartnerDashboardClient(props: {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
+      <RequestAlertModal
+        key={alertRequest?.id ?? "none"}
+        open={alertOpen}
+        request={alertRequest}
+        myCoords={myCoords}
+        onClose={() => setAlertOpen(false)}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => setSoundEnabled((v) => !v)}
+      />
+
       <div className="card relative overflow-hidden p-5 sm:p-6">
         <div className="pointer-events-none absolute inset-0 opacity-80">
           <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_12%_0%,rgba(255,195,0,0.16)_0%,rgba(28,28,31,0)_60%),radial-gradient(55%_55%_at_92%_8%,rgba(225,6,0,0.18)_0%,rgba(28,28,31,0)_60%)]" />
@@ -327,9 +642,9 @@ export function PartnerDashboardClient(props: {
             </a>
           </div>
 
-          {props.requests.length ? (
+          {requests.length ? (
             <div className="mt-3 space-y-2">
-              {props.requests.slice(0, 10).map((r) => (
+              {requests.slice(0, 10).map((r) => (
                 <a
                   key={r.id}
                   className="block rounded-2xl border border-brand-border/20 bg-white p-3 hover:bg-brand-yellow/10"

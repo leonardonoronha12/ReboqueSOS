@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
+import { getOptionalEnvAny } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 import { PartnerDashboardClient } from "./partnerDashboardClient";
@@ -32,7 +33,7 @@ export default async function PartnerDashboardPage() {
 
   const { data: requests } = await supabase
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,created_at")
+    .select("id,local_cliente,cidade,status,created_at,lat,lng,cliente_nome,telefone_cliente,modelo_veiculo")
     .eq("cidade", cidade)
     .in("status", ["PENDENTE", "PROPOSTA_RECEBIDA"])
     .order("created_at", { ascending: false })
@@ -50,12 +51,19 @@ export default async function PartnerDashboardPage() {
       profile={profile}
       partner={partner ?? null}
       cidade={cidade}
+      supabaseUrl={getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"]) ?? null}
+      supabaseAnonKey={getOptionalEnvAny(["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"]) ?? null}
       requests={(requests ?? []).map((r) => ({
         id: r.id,
         local_cliente: r.local_cliente,
         cidade: r.cidade,
         status: r.status,
         created_at: r.created_at,
+        lat: typeof r.lat === "number" ? r.lat : null,
+        lng: typeof r.lng === "number" ? r.lng : null,
+        cliente_nome: typeof r.cliente_nome === "string" ? r.cliente_nome : null,
+        telefone_cliente: typeof r.telefone_cliente === "string" ? r.telefone_cliente : null,
+        modelo_veiculo: typeof r.modelo_veiculo === "string" ? r.modelo_veiculo : null,
       }))}
       trips={(trips ?? []).map((t) => ({
         id: t.id,

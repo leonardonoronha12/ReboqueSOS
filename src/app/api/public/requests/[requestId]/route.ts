@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ req
 
   const { data: requestRow } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,local_cliente,cidade,status,accepted_proposal_id,telefone_cliente,modelo_veiculo,created_at")
+    .select("id,local_cliente,cidade,status,accepted_proposal_id,telefone_cliente,modelo_veiculo,created_at,lat,lng,cliente_nome")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -28,4 +28,3 @@ export async function GET(_request: Request, { params }: { params: Promise<{ req
 
   return NextResponse.json({ request: requestRow, proposals: proposals ?? [], trip: trip ?? null }, { status: 200 });
 }
-
