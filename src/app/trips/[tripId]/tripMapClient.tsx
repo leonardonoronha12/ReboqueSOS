@@ -14,6 +14,7 @@ export function TripMapClient(props: {
 }) {
   const [towLocation, setTowLocation] = useState<Coords | null>(props.initialTowLocation);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const [restartKey, setRestartKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +78,16 @@ export function TripMapClient(props: {
       alive = false;
       window.clearInterval(id);
     };
-  }, [props.tripId]);
+  }, [props.tripId, restartKey]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      setRestartKey((v) => v + 1);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded } = useJsApiLoader({

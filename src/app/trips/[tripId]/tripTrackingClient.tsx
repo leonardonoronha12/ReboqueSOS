@@ -103,6 +103,8 @@ export function TripTrackingClient(props: {
   const finishSentRef = useRef(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const [geoRestartKey, setGeoRestartKey] = useState(0);
+  const [liveRestartKey, setLiveRestartKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,7 +168,17 @@ export function TripTrackingClient(props: {
       alive = false;
       window.clearInterval(id);
     };
-  }, [props.tripId]);
+  }, [props.tripId, liveRestartKey]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      setGeoRestartKey((v) => v + 1);
+      setLiveRestartKey((v) => v + 1);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -235,7 +247,7 @@ export function TripTrackingClient(props: {
       watchIdRef.current = null;
       intervalRef.current = null;
     };
-  }, [canTransmit, props.tripId]);
+  }, [canTransmit, geoRestartKey, props.tripId]);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded } = useJsApiLoader({
