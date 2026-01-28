@@ -256,8 +256,30 @@ export function RequestDetailsClient(props: {
     }
   }
 
+  const isSearchingPartners = (() => {
+    const status = String(requestRow.status ?? "");
+    if (trip) return false;
+    if (accepted) return false;
+    if (visibleProposals.length > 0) return false;
+    return status === "PENDENTE" || status === "PROPOSTA_RECEBIDA";
+  })();
+
   return (
     <div className="space-y-6">
+      {isSearchingPartners ? (
+        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center p-6">
+          <div className="rounded-3xl border border-brand-border/20 bg-white/95 p-5 shadow-soft backdrop-blur">
+            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-brand-border/20 border-t-brand-yellow" />
+            <div className="mt-4 text-center text-sm font-extrabold text-brand-black">
+              Buscando reboques parceiros…
+            </div>
+            <div className="mt-1 text-center text-xs font-semibold text-brand-black/60">
+              Aguarde as propostas aparecerem
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <Modal
         open={proposalModalOpen && !!modalProposal}
         title="Proposta recebida"
