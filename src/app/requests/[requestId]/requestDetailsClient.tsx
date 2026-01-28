@@ -50,14 +50,14 @@ function formatBrl(value: number) {
 function tryVibrate() {
   try {
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      navigator.vibrate([180, 80, 180]);
+      navigator.vibrate([250, 120, 250, 120, 450]);
     }
   } catch {
     return;
   }
 }
 
-async function tryBeep() {
+async function playAlarmToneOnce() {
   try {
     const AudioCtx =
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
@@ -67,28 +67,50 @@ async function tryBeep() {
     const ctx = new AudioCtx();
     if (ctx.state === "suspended") await ctx.resume().catch(() => null);
 
-    const gain = ctx.createGain();
-    gain.gain.value = 0.0001;
-    gain.connect(ctx.destination);
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, ctx.currentTime);
+    master.connect(ctx.destination);
 
-    const beep = (t: number) => {
-      const o = ctx.createOscillator();
-      o.type = "square";
-      o.frequency.setValueAtTime(880, t);
-      o.connect(gain);
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
-      o.start(t);
-      o.stop(t + 0.16);
+    const mkBeep = (t: number, f: number, d: number) => {
+      const g1 = ctx.createGain();
+      g1.gain.setValueAtTime(0.0001, t);
+      g1.connect(master);
+
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0.0001, t);
+      g2.connect(master);
+
+      const o1 = ctx.createOscillator();
+      o1.type = "sawtooth";
+      o1.frequency.setValueAtTime(f, t);
+      o1.connect(g1);
+
+      const o2 = ctx.createOscillator();
+      o2.type = "square";
+      o2.frequency.setValueAtTime(f / 2, t);
+      o2.connect(g2);
+
+      g1.gain.setValueAtTime(0.0001, t);
+      g1.gain.exponentialRampToValueAtTime(0.28, t + 0.015);
+      g1.gain.exponentialRampToValueAtTime(0.0001, t + d);
+
+      g2.gain.setValueAtTime(0.0001, t);
+      g2.gain.exponentialRampToValueAtTime(0.14, t + 0.015);
+      g2.gain.exponentialRampToValueAtTime(0.0001, t + d);
+
+      o1.start(t);
+      o2.start(t);
+      o1.stop(t + d + 0.02);
+      o2.stop(t + d + 0.02);
     };
 
     const t0 = ctx.currentTime + 0.02;
-    beep(t0);
-    beep(t0 + 0.22);
+    mkBeep(t0, 880, 0.22);
+    mkBeep(t0 + 0.34, 784, 0.22);
+    mkBeep(t0 + 0.68, 988, 0.30);
     window.setTimeout(() => {
       ctx.close().catch(() => null);
-    }, 600);
+    }, 1400);
   } catch {
     return;
   }
@@ -110,6 +132,8 @@ export function RequestDetailsClient(props: {
   const [proposalModalId, setProposalModalId] = useState<string | null>(null);
   const lastNotifiedIdRef = useRef<string | null>(null);
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => new Set());
+  const alarmIntervalRef = useRef<number | null>(null);
+  const alarmTicksRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -172,8 +196,32 @@ export function RequestDetailsClient(props: {
     setProposalModalId(id);
     setProposalModalOpen(true);
     tryVibrate();
-    void tryBeep();
+    void playAlarmToneOnce();
   }, [accepted, newestProposal]);
+
+  useEffect(() => {
+    const shouldAlarm = proposalModalOpen && !!modalProposal && !accepted;
+    if (!shouldAlarm) {
+      if (alarmIntervalRef.current != null) window.clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+      alarmTicksRef.current = 0;
+      return;
+    }
+
+    if (alarmIntervalRef.current != null) return;
+    alarmTicksRef.current = 0;
+    alarmIntervalRef.current = window.setInterval(() => {
+      alarmTicksRef.current += 1;
+      if (alarmTicksRef.current <= 4) tryVibrate();
+      void playAlarmToneOnce();
+    }, 1600);
+
+    return () => {
+      if (alarmIntervalRef.current != null) window.clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+      alarmTicksRef.current = 0;
+    };
+  }, [accepted, modalProposal, proposalModalOpen]);
 
   function declineProposal(proposalId: string) {
     setDeclinedIds((prev) => {

@@ -133,13 +133,23 @@ function stopAlertTone() {
   }
 }
 
+function tryAlertVibrate() {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([300, 150, 300, 150, 650]);
+    }
+  } catch {
+    return;
+  }
+}
+
 function scheduleTone(ctx: AudioContext, gain: GainNode, at: number, duration: number, freq: number) {
   const osc = ctx.createOscillator();
-  osc.type = "sine";
+  osc.type = "square";
   osc.frequency.setValueAtTime(freq, at);
   osc.connect(gain);
   gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.linearRampToValueAtTime(0.18, at + 0.01);
+  gain.gain.linearRampToValueAtTime(0.32, at + 0.01);
   gain.gain.linearRampToValueAtTime(0.0001, at + duration);
   osc.start(at);
   osc.stop(at + duration + 0.02);
@@ -528,6 +538,7 @@ export function PartnerDashboardClient(props: {
           setRequests((prev) => (prev.some((r) => r.id === normalized.id) ? prev : [normalized, ...prev].slice(0, 20)));
           setAlertRequest(normalized);
           setAlertOpen(true);
+          tryAlertVibrate();
           void playLongAlert();
         },
       )
@@ -576,6 +587,7 @@ export function PartnerDashboardClient(props: {
             seenRequestIdsRef.current.add(newest.id);
             setAlertRequest(newest);
             setAlertOpen(true);
+            tryAlertVibrate();
             void playLongAlert();
           }
         }
