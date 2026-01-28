@@ -18,7 +18,7 @@ async function readJsonResponse<T>(res: Response) {
   }
 }
 
-function CheckoutForm(props: { options: StripePaymentElementOptions; onSubmitted: () => void }) {
+function CheckoutForm(props: { options: StripePaymentElementOptions; requestId: string; onSubmitted: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,9 @@ function CheckoutForm(props: { options: StripePaymentElementOptions; onSubmitted
     setError(null);
     const { error: stripeError } = await stripe.confirmPayment({
       elements,
-      confirmParams: {},
+      confirmParams: {
+        return_url: `${window.location.origin}/payments/${encodeURIComponent(props.requestId)}`,
+      },
       redirect: "if_required",
     });
     if (stripeError) setError(stripeError.message ?? "Falha no pagamento.");
@@ -174,7 +176,7 @@ export function PaymentCheckoutClient(props: { requestId: string }) {
         </div>
       ) : null}
       <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe" } }}>
-        <CheckoutForm options={options} onSubmitted={() => setStatus("submitted")} />
+        <CheckoutForm requestId={props.requestId} options={options} onSubmitted={() => setStatus("submitted")} />
       </Elements>
     </div>
   );

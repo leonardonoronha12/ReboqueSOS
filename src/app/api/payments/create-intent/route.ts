@@ -87,15 +87,29 @@ export async function POST(request: Request) {
 
     if (existing.data?.stripe_intent_id && existing.data.status !== "succeeded") {
       const pi = await stripe.paymentIntents.retrieve(existing.data.stripe_intent_id);
-      if (pi.client_secret) {
+      const pmTypes = Array.isArray(pi.payment_method_types) ? pi.payment_method_types : [];
+      const supportsPix = pmTypes.includes("pix");
+      const canReuse = supportsPix && pi.status !== "canceled" && pi.status !== "succeeded";
+      if (canReuse && pi.client_secret) {
+        await supabaseAdmin
+          .from("payments")
+          .update({ status: pi.status, updated_at: new Date().toISOString() })
+          .eq("stripe_intent_id", pi.id);
         return NextResponse.json({ clientSecret: pi.client_secret }, { status: 200 });
+      }
+
+      if (!supportsPix && pi.status !== "succeeded") {
+        await stripe.paymentIntents.cancel(pi.id).catch(() => null);
       }
     }
 
-    const baseParams = {
+    const intent = await stripe.paymentIntents.create({
       amount: totalCents,
       currency: "brl",
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ["card", "pix"],
+      payment_method_options: {
+        pix: { expires_after_seconds: 3600 },
+      },
       application_fee_amount: platformFee,
       transfer_data: {
         destination: partner.stripe_account_id,
@@ -105,9 +119,7 @@ export async function POST(request: Request) {
         trip_id: trip?.id ?? "",
         partner_id: partner.id,
       },
-    } as const;
-
-    const intent = await stripe.paymentIntents.create(baseParams);
+    });
 
     await supabaseAdmin.from("payments").upsert(
       {
