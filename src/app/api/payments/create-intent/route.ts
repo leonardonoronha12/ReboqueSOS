@@ -87,29 +87,20 @@ export async function POST(request: Request) {
 
     if (existing.data?.stripe_intent_id && existing.data.status !== "succeeded") {
       const pi = await stripe.paymentIntents.retrieve(existing.data.stripe_intent_id);
-      const pmTypes = Array.isArray(pi.payment_method_types) ? pi.payment_method_types : [];
-      const supportsPix = pmTypes.includes("pix");
-      const canReuse = supportsPix && pi.status !== "canceled" && pi.status !== "succeeded";
-      if (canReuse && pi.client_secret) {
+      if (pi.client_secret && pi.status !== "canceled" && pi.status !== "succeeded") {
         await supabaseAdmin
           .from("payments")
           .update({ status: pi.status, updated_at: new Date().toISOString() })
           .eq("stripe_intent_id", pi.id);
         return NextResponse.json({ clientSecret: pi.client_secret }, { status: 200 });
       }
-
-      if (!supportsPix && pi.status !== "succeeded") {
-        await stripe.paymentIntents.cancel(pi.id).catch(() => null);
-      }
+      await stripe.paymentIntents.cancel(pi.id).catch(() => null);
     }
 
     const intent = await stripe.paymentIntents.create({
       amount: totalCents,
       currency: "brl",
-      payment_method_types: ["card", "pix"],
-      payment_method_options: {
-        pix: { expires_after_seconds: 3600 },
-      },
+      payment_method_types: ["card"],
       application_fee_amount: platformFee,
       transfer_data: {
         destination: partner.stripe_account_id,
@@ -128,6 +119,9 @@ export async function POST(request: Request) {
         amount: totalCents,
         currency: "brl",
         status: intent.status,
+        provider: "stripe",
+        provider_payment_id: intent.id,
+        method: "card",
         platform_fee_amount: platformFee,
         driver_amount: driverAmount,
         updated_at: new Date().toISOString(),

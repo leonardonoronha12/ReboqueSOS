@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 
-import { PaymentCheckoutClient } from "./paymentCheckoutClient";
+import { PaymentMethodsClient } from "./paymentMethodsClient";
 
 export default async function PaymentPage({
   params,
@@ -75,6 +75,22 @@ export default async function PaymentPage({
     );
   }
 
+  const { data: proposal } = await supabase
+    .from("tow_proposals")
+    .select("id,partner_id")
+    .eq("id", reqRow.accepted_proposal_id)
+    .maybeSingle();
+
+  const { data: partner } = proposal?.partner_id
+    ? await supabase
+        .from("tow_partners")
+        .select("id,stripe_account_id")
+        .eq("id", proposal.partner_id)
+        .maybeSingle()
+    : { data: null };
+
+  const cardEnabled = Boolean(partner?.stripe_account_id);
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-6">
@@ -82,7 +98,7 @@ export default async function PaymentPage({
         <p className="mt-2 text-sm text-zinc-700">Status do pedido: {reqRow.status}</p>
       </div>
 
-      <PaymentCheckoutClient requestId={requestId} />
+      <PaymentMethodsClient requestId={requestId} cardEnabled={cardEnabled} />
     </div>
   );
 }
