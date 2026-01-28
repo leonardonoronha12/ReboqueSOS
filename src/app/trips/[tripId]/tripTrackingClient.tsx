@@ -102,6 +102,47 @@ export function TripTrackingClient(props: {
   const pickupArrivedRef = useRef(false);
   const finishSentRef = useRef(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        const anyNav = navigator as unknown as { wakeLock?: { request?: (type: "screen") => Promise<{ release: () => Promise<void> }> } };
+        if (!anyNav?.wakeLock?.request) return;
+        if (wakeLockRef.current) {
+          await wakeLockRef.current.release().catch(() => null);
+          wakeLockRef.current = null;
+        }
+        const sentinel = await anyNav.wakeLock.request("screen");
+        if (cancelled) {
+          await sentinel.release().catch(() => null);
+          return;
+        }
+        wakeLockRef.current = sentinel;
+      } catch {
+        return;
+      }
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") void acquire();
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    void acquire();
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      if (wakeLockRef.current) {
+        void wakeLockRef.current.release().catch(() => null);
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
