@@ -43,6 +43,50 @@ function isStripeTestMode() {
   return key.startsWith("sk_test_");
 }
 
+function getAsaasBaseUrl() {
+  const env = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV).toLowerCase() : "";
+  if (process.env.ASAAS_BASE_URL) return String(process.env.ASAAS_BASE_URL);
+  if (env === "sandbox") return "https://api-sandbox.asaas.com";
+  return "https://api.asaas.com";
+}
+
+function getAsaasApiKey() {
+  const k = process.env.ASAAS_API_KEY ? String(process.env.ASAAS_API_KEY).trim() : "";
+  return k;
+}
+
+async function asaasFetch<T>(path: string, init?: RequestInit) {
+  const apiKey = getAsaasApiKey();
+  if (!apiKey) return { ok: false as const, status: 500, json: null as T | null, text: "Asaas não configurado." };
+  const base = getAsaasBaseUrl();
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      access_token: apiKey,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let json: T | null = null;
+  try {
+    json = text ? (JSON.parse(text) as T) : null;
+  } catch {
+    json = null;
+  }
+  return { ok: res.ok, status: res.status, json, text };
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function extractAddressNumber(line1: string) {
+  const m = line1.match(/(\d{1,6})(?!.*\d)/);
+  return m?.[1] ?? "0";
+}
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -62,6 +106,7 @@ export async function POST(request: Request) {
       address?: { line1?: string; line2?: string | null; city?: string; state?: string; postal_code?: string; country?: string };
       bank?: { country?: string; currency?: string; bank_code?: string; branch_code?: string; account_number?: string };
       accept_tos?: boolean;
+      income_value?: number;
     };
 
     if (!body) return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
@@ -90,6 +135,10 @@ export async function POST(request: Request) {
 
     const acceptTos = Boolean(body.accept_tos);
     if (!acceptTos) return NextResponse.json({ error: "Aceite os termos para continuar." }, { status: 400 });
+    const incomeValue = Number(body.income_value);
+    if (!Number.isFinite(incomeValue) || incomeValue <= 0) {
+      return NextResponse.json({ error: "Informe sua renda/faturamento mensal." }, { status: 400 });
+    }
 
     if (!fullName) return NextResponse.json({ error: "Nome inválido." }, { status: 400 });
     if (cpf.length !== 11) return NextResponse.json({ error: "CPF inválido." }, { status: 400 });
@@ -107,7 +156,7 @@ export async function POST(request: Request) {
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: partner, error: partnerErr } = await supabaseAdmin
       .from("tow_partners")
-      .select("stripe_account_id")
+      .select("stripe_account_id,asaas_wallet_id")
       .eq("id", user.id)
       .maybeSingle();
     if (partnerErr) return NextResponse.json({ error: partnerErr.message }, { status: 500 });
@@ -187,6 +236,42 @@ export async function POST(request: Request) {
       external_account: bankTok.id,
       default_for_currency: true,
     });
+
+    if (!partner?.asaas_wallet_id && getAsaasApiKey()) {
+      const birthDate = `${dobYear}-${pad2(dobMonth)}-${pad2(dobDay)}`;
+      const addressNumber = extractAddressNumber(line1);
+
+      const createRes = await asaasFetch<{ id?: string; walletId?: string; apiKey?: string }>("/v3/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          name: fullName,
+          email,
+          cpfCnpj: cpf,
+          birthDate,
+          phone: phone,
+          mobilePhone: phone,
+          address: line1,
+          addressNumber,
+          complement: line2 || undefined,
+          province: "Centro",
+          postalCode: postal,
+          incomeValue: Number(incomeValue.toFixed(2)),
+        }),
+      });
+
+      if (createRes.ok && createRes.json?.walletId) {
+        await supabaseAdmin
+          .from("tow_partners")
+          .update({
+            asaas_account_id: createRes.json.id ? String(createRes.json.id) : null,
+            asaas_wallet_id: String(createRes.json.walletId),
+            asaas_api_key: createRes.json.apiKey ? String(createRes.json.apiKey) : null,
+            asaas_income_value: Number(incomeValue.toFixed(2)),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id);
+      }
+    }
 
     return NextResponse.json({ ok: true, account_id: accountId }, { status: 200 });
   } catch (e) {

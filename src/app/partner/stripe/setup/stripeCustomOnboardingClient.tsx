@@ -49,7 +49,14 @@ function formatDue(list: string[] | undefined) {
 }
 
 export function StripeCustomOnboardingClient(props: {
-  initial: { cpf: string | null; email: string | null; fullName: string; phone: string | null; stripe_account_id: string | null };
+  initial: {
+    cpf: string | null;
+    email: string | null;
+    fullName: string;
+    phone: string | null;
+    stripe_account_id: string | null;
+    income_value: number | null;
+  };
 }) {
   const [fullName, setFullName] = useState(props.initial.fullName);
   const [cpf, setCpf] = useState(props.initial.cpf ?? "");
@@ -69,6 +76,7 @@ export function StripeCustomOnboardingClient(props: {
   const [bankCode, setBankCode] = useState("");
   const [branchCode, setBranchCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+  const [incomeValue, setIncomeValue] = useState(props.initial.income_value != null ? String(props.initial.income_value) : "");
 
   const [acceptTos, setAcceptTos] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -87,9 +95,11 @@ export function StripeCustomOnboardingClient(props: {
     if (!digitsOnly(dobDay) || !digitsOnly(dobMonth) || !digitsOnly(dobYear)) return false;
     if (!addrLine1.trim() || !addrCity.trim() || !addrState.trim() || !digitsOnly(addrPostal).trim()) return false;
     if (!digitsOnly(bankCode).trim() || !digitsOnly(branchCode).trim() || !digitsOnly(accountNumber).trim()) return false;
+    const income = Number(incomeValue.replace(",", "."));
+    if (!Number.isFinite(income) || income <= 0) return false;
     if (!acceptTos) return false;
     return true;
-  }, [acceptTos, accountNumber, addrCity, addrLine1, addrPostal, addrState, bankCode, branchCode, cpf, dobDay, dobMonth, dobYear, email, fullName, phone]);
+  }, [acceptTos, accountNumber, addrCity, addrLine1, addrPostal, addrState, bankCode, branchCode, cpf, dobDay, dobMonth, dobYear, email, fullName, incomeValue, phone]);
 
   async function loadStatus() {
     setIsLoadingStatus(true);
@@ -141,6 +151,7 @@ export function StripeCustomOnboardingClient(props: {
             account_number: digitsOnly(accountNumber),
           },
           accept_tos: acceptTos,
+          income_value: Number(incomeValue.replace(",", ".")),
         }),
       });
       const json = (await res.json()) as SubmitResponse;
@@ -278,6 +289,16 @@ export function StripeCustomOnboardingClient(props: {
           <label className="space-y-1 sm:col-span-2">
             <div className="text-sm font-medium">Conta (com dígito)</div>
             <input className="w-full rounded-md border px-3 py-2" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} inputMode="numeric" placeholder="Somente números" />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <div className="text-sm font-medium">Renda/faturamento mensal (R$)</div>
+            <input
+              className="w-full rounded-md border px-3 py-2"
+              value={incomeValue}
+              onChange={(e) => setIncomeValue(e.target.value)}
+              inputMode="numeric"
+              placeholder="Ex: 5000"
+            />
           </label>
         </div>
       </div>

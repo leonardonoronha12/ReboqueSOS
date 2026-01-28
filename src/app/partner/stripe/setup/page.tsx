@@ -18,7 +18,7 @@ export default async function PartnerStripeSetupPage() {
   const supabaseAdmin = createSupabaseAdminClient();
   const { data: partner } = await supabaseAdmin
     .from("tow_partners")
-    .select("id,cpf,empresa_nome,whatsapp_number,stripe_account_id")
+    .select("id,cpf,empresa_nome,whatsapp_number,stripe_account_id,asaas_income_value")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -30,8 +30,8 @@ export default async function PartnerStripeSetupPage() {
         fullName: profile.nome ?? "",
         phone: partner?.whatsapp_number ?? null,
         stripe_account_id: partner?.stripe_account_id ?? null,
+        income_value: partner?.asaas_income_value != null ? Number(partner.asaas_income_value) : null,
       }}
     />
   );
 }
-

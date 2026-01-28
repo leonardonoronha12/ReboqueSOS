@@ -1,29 +1,45 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
-import { getRequiredEnv } from "@/lib/env";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculatePlatformFeeCents } from "@/lib/stripe/server";
 
-type MpPaymentResponse = {
-  id?: number | string;
-  status?: string;
-  date_of_expiration?: string | null;
-  external_reference?: string | null;
-  point_of_interaction?: {
-    transaction_data?: {
-      qr_code?: string | null;
-      qr_code_base64?: string | null;
-    } | null;
-  } | null;
+type AsaasCustomer = {
+  id: string;
 };
 
-async function mpFetchWithToken<T>(token: string, path: string, init?: RequestInit) {
-  const res = await fetch(`https://api.mercadopago.com${path}`, {
+type AsaasPayment = {
+  id: string;
+  status: string;
+};
+
+type AsaasPixQrCode = {
+  encodedImage?: string;
+  payload?: string;
+  expirationDate?: string;
+};
+
+function getAsaasBaseUrl() {
+  const env = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV).toLowerCase() : "";
+  if (process.env.ASAAS_BASE_URL) return String(process.env.ASAAS_BASE_URL);
+  if (env === "sandbox") return "https://api-sandbox.asaas.com";
+  return "https://api.asaas.com";
+}
+
+function getAsaasApiKey() {
+  const k = process.env.ASAAS_API_KEY ? String(process.env.ASAAS_API_KEY).trim() : "";
+  return k;
+}
+
+async function asaasFetch<T>(path: string, init?: RequestInit) {
+  const apiKey = getAsaasApiKey();
+  if (!apiKey) return { ok: false as const, status: 500, json: null as T | null, text: "Asaas não configurado." };
+  const base = getAsaasBaseUrl();
+  const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      access_token: apiKey,
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
@@ -36,69 +52,15 @@ async function mpFetchWithToken<T>(token: string, path: string, init?: RequestIn
   } catch {
     json = null;
   }
-  return { res, json, text };
+  return { ok: res.ok, status: res.status, json, text };
 }
 
-type MpTokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; user_id?: number | string };
-
-async function refreshPartnerToken(params: { refresh_token: string }) {
-  const body = new URLSearchParams();
-  body.set("grant_type", "refresh_token");
-  body.set("client_id", getRequiredEnv("MERCADOPAGO_CLIENT_ID"));
-  body.set("client_secret", getRequiredEnv("MERCADOPAGO_CLIENT_SECRET"));
-  body.set("refresh_token", params.refresh_token);
-  const res = await fetch("https://api.mercadopago.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
-  const text = await res.text();
-  let json: MpTokenResponse | null = null;
-  try {
-    json = text ? (JSON.parse(text) as MpTokenResponse) : null;
-  } catch {
-    json = null;
-  }
-  return { res, json, text };
-}
-
-async function getPartnerMpAccessToken(supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>, partnerId: string) {
-  const { data: partner } = await supabaseAdmin
-    .from("tow_partners")
-    .select("id,mp_access_token,mp_refresh_token,mp_token_expires_at")
-    .eq("id", partnerId)
-    .maybeSingle();
-
-  const access = partner?.mp_access_token ? String(partner.mp_access_token) : "";
-  const refresh = partner?.mp_refresh_token ? String(partner.mp_refresh_token) : "";
-  const expiresAt = partner?.mp_token_expires_at ? String(partner.mp_token_expires_at) : "";
-  const expired = (() => {
-    if (!expiresAt) return false;
-    const t = new Date(expiresAt).getTime();
-    if (!Number.isFinite(t)) return false;
-    return t - Date.now() < 2 * 60 * 1000;
-  })();
-
-  if (access && !expired) return access;
-  if (!refresh) return "";
-
-  const { res, json } = await refreshPartnerToken({ refresh_token: refresh });
-  if (!res.ok || !json?.access_token || !json?.refresh_token) return "";
-
-  const expiresIn = Number(json.expires_in ?? 0);
-  const nextExpiresAt = expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
-  await supabaseAdmin
-    .from("tow_partners")
-    .update({
-      mp_access_token: String(json.access_token),
-      mp_refresh_token: String(json.refresh_token),
-      mp_token_expires_at: nextExpiresAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", partnerId);
-
-  return String(json.access_token);
+function todayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export async function POST(request: Request) {
@@ -152,79 +114,88 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Valor inválido." }, { status: 400 });
     }
 
-    const sellerToken = await getPartnerMpAccessToken(supabaseAdmin, partnerId);
-    if (!sellerToken) {
-      return NextResponse.json(
-        { error: "Parceiro não conectou o Mercado Pago para receber via Pix." },
-        { status: 409 },
-      );
-    }
-
     const existing = await supabaseAdmin
       .from("payments")
       .select("provider,provider_payment_id,status,amount")
       .eq("request_id", requestId)
       .maybeSingle();
 
-    if (existing.data?.provider === "mercadopago" && existing.data.provider_payment_id && existing.data.status !== "approved") {
+    if (existing.data?.provider === "asaas" && existing.data.provider_payment_id && existing.data.status !== "RECEIVED") {
       const pid = String(existing.data.provider_payment_id);
-      const { res, json } = await mpFetchWithToken<MpPaymentResponse>(sellerToken, `/v1/payments/${encodeURIComponent(pid)}`, {
-        method: "GET",
-      });
-      if (res.ok && json) {
-        const qr = json.point_of_interaction?.transaction_data?.qr_code ?? null;
-        const b64 = json.point_of_interaction?.transaction_data?.qr_code_base64 ?? null;
-        const status = String(json.status ?? existing.data.status ?? "pending");
-        await supabaseAdmin
-          .from("payments")
-          .update({ status, updated_at: new Date().toISOString() })
-          .eq("request_id", requestId);
-        if (qr && b64) {
-          return NextResponse.json(
-            { provider: "mercadopago", status, qrCode: qr, qrCodeBase64: b64, expiresAt: json.date_of_expiration ?? null },
-            { status: 200 },
-          );
-        }
+      const qrRes = await asaasFetch<AsaasPixQrCode>(`/v3/payments/${encodeURIComponent(pid)}/pixQrCode`, { method: "GET" });
+      if (qrRes.ok && qrRes.json?.payload && qrRes.json?.encodedImage) {
+        return NextResponse.json(
+          {
+            provider: "asaas",
+            status: String(existing.data.status ?? "PENDING"),
+            qrCode: String(qrRes.json.payload),
+            qrCodeBase64: String(qrRes.json.encodedImage),
+            expiresAt: qrRes.json.expirationDate ? String(qrRes.json.expirationDate) : null,
+          },
+          { status: 200 },
+        );
       }
     }
 
-    const payerEmail = (() => {
+    const { data: partner } = await supabaseAdmin
+      .from("tow_partners")
+      .select("id,asaas_wallet_id")
+      .eq("id", partnerId)
+      .maybeSingle();
+
+    const partnerWalletId = partner?.asaas_wallet_id ? String(partner.asaas_wallet_id).trim() : "";
+    if (!partnerWalletId) {
+      return NextResponse.json({ error: "Parceiro ainda não está habilitado para Pix (Split)." }, { status: 409 });
+    }
+
+    const platformFeeCents = calculatePlatformFeeCents(totalCents);
+    const driverAmountCents = totalCents - platformFeeCents;
+    const partnerPercent = Math.max(0, Math.min(100, Number(((driverAmountCents / totalCents) * 100).toFixed(4))));
+
+    const customerName = (reqRow.cliente_nome ? String(reqRow.cliente_nome) : "").trim() || "Cliente";
+    const customerEmail = (() => {
       const email = user?.email ? String(user.email).trim() : "";
       if (email) return email;
       return `guest+${requestId.replace(/[^a-zA-Z0-9]/g, "")}@reboquesos.local`;
     })();
 
-    const origin = new URL(request.url).origin;
-    const notificationUrl = `${origin}/api/webhooks/mercadopago`;
-
-    const platformFeeCents = calculatePlatformFeeCents(totalCents);
-    const applicationFee = Number((platformFeeCents / 100).toFixed(2));
-    const driverAmount = totalCents - platformFeeCents;
-
-    const mpPayload = {
-      transaction_amount: Number((totalCents / 100).toFixed(2)),
-      description: `ReboqueSOS - Pedido ${requestId.slice(0, 8)}`,
-      payment_method_id: "pix",
-      payer: { email: payerEmail },
-      external_reference: requestId,
-      notification_url: notificationUrl,
-      application_fee: applicationFee,
-    };
-
-    const { res: mpRes, json: mpJson, text: mpText } = await mpFetchWithToken<MpPaymentResponse>(sellerToken, "/v1/payments", {
+    const customerRes = await asaasFetch<AsaasCustomer>("/v3/customers", {
       method: "POST",
-      headers: { "X-Idempotency-Key": `reboquesos_pix_${requestId}` },
-      body: JSON.stringify(mpPayload),
+      body: JSON.stringify({
+        name: customerName,
+        email: customerEmail,
+        mobilePhone: reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : undefined,
+        externalReference: requestId,
+      }),
     });
-
-    if (!mpRes.ok || !mpJson?.id) {
-      return NextResponse.json({ error: "Falha ao criar Pix.", details: mpJson ?? mpText }, { status: 502 });
+    if (!customerRes.ok || !customerRes.json?.id) {
+      return NextResponse.json({ error: "Falha ao criar cliente Pix.", details: customerRes.json ?? customerRes.text }, { status: 502 });
     }
 
-    const mpId = String(mpJson.id);
-    const status = String(mpJson.status ?? "pending");
-    const qr = mpJson.point_of_interaction?.transaction_data?.qr_code ?? null;
-    const b64 = mpJson.point_of_interaction?.transaction_data?.qr_code_base64 ?? null;
+    const payRes = await asaasFetch<AsaasPayment>("/v3/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        customer: customerRes.json.id,
+        billingType: "PIX",
+        value: Number((totalCents / 100).toFixed(2)),
+        dueDate: todayIso(),
+        description: `ReboqueSOS - Pedido ${requestId.slice(0, 8)}`,
+        externalReference: requestId,
+        splits: [{ walletId: partnerWalletId, percentualValue: partnerPercent }],
+      }),
+    });
+    if (!payRes.ok || !payRes.json?.id) {
+      return NextResponse.json({ error: "Falha ao criar Pix.", details: payRes.json ?? payRes.text }, { status: 502 });
+    }
+
+    const asaasPaymentId = String(payRes.json.id);
+    const asaasStatus = String(payRes.json.status ?? "PENDING");
+
+    const qrRes = await asaasFetch<AsaasPixQrCode>(`/v3/payments/${encodeURIComponent(asaasPaymentId)}/pixQrCode`, {
+      method: "GET",
+    });
+    const qr = qrRes.ok && qrRes.json?.payload ? String(qrRes.json.payload) : "";
+    const b64 = qrRes.ok && qrRes.json?.encodedImage ? String(qrRes.json.encodedImage) : "";
     if (!qr || !b64) return NextResponse.json({ error: "Pix criado, mas QR não disponível." }, { status: 502 });
 
     await supabaseAdmin.from("payments").upsert(
@@ -233,19 +204,25 @@ export async function POST(request: Request) {
         stripe_intent_id: null,
         amount: totalCents,
         currency: "brl",
-        status,
-        provider: "mercadopago",
-        provider_payment_id: mpId,
+        status: asaasStatus,
+        provider: "asaas",
+        provider_payment_id: asaasPaymentId,
         method: "pix",
         platform_fee_amount: platformFeeCents,
-        driver_amount: driverAmount,
+        driver_amount: driverAmountCents,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "request_id" },
     );
 
     return NextResponse.json(
-      { provider: "mercadopago", status, qrCode: qr, qrCodeBase64: b64, expiresAt: mpJson.date_of_expiration ?? null },
+      {
+        provider: "asaas",
+        status: asaasStatus,
+        qrCode: qr,
+        qrCodeBase64: b64,
+        expiresAt: qrRes.ok && qrRes.json?.expirationDate ? String(qrRes.json.expirationDate) : null,
+      },
       { status: 200 },
     );
   } catch (e) {
