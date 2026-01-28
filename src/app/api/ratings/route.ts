@@ -6,11 +6,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const user = await requireUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-
-  const profile = await getUserProfile(user.id);
-  if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
-  if (profile.role !== "cliente" && profile.role !== "admin") {
+  const profile = user ? await getUserProfile(user.id) : null;
+  if (user && !profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 403 });
+  if (profile && profile.role !== "cliente" && profile.role !== "admin") {
     return NextResponse.json({ error: "Apenas clientes podem avaliar." }, { status: 403 });
   }
 
@@ -36,8 +34,23 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!reqRow) return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
-  if (profile.role !== "admin" && reqRow.cliente_id !== user.id) {
-    return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+  if (String(reqRow.status ?? "") !== "PAGO") {
+    return NextResponse.json({ error: "A avaliação fica disponível após finalizar a corrida." }, { status: 400 });
+  }
+
+  const reqClienteId = reqRow.cliente_id ? String(reqRow.cliente_id) : null;
+  const userId = user?.id ? String(user.id) : null;
+  const role = profile?.role ?? null;
+
+  if (reqClienteId) {
+    if (!userId) return NextResponse.json({ error: "Faça login para avaliar." }, { status: 401 });
+    if (role !== "admin" && reqClienteId !== userId) {
+      return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    }
+  } else {
+    if (role && role !== "cliente" && role !== "admin") {
+      return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    }
   }
 
   const { data: trip } = await supabaseAdmin
@@ -52,7 +65,7 @@ export async function POST(request: Request) {
   const { error } = await supabaseAdmin.from("tow_ratings").upsert(
     {
       request_id: requestId,
-      cliente_id: reqRow.cliente_id,
+      cliente_id: reqClienteId ?? userId ?? null,
       driver_id: trip.driver_id,
       rating,
       comentario,
@@ -64,4 +77,3 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true }, { status: 200 });
 }
-
