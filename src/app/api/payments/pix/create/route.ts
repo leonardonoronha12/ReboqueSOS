@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getUserProfile } from "@/lib/auth/getProfile";
-import { getOptionalEnvAny, getRequiredEnv } from "@/lib/env";
+import { getRequiredEnv } from "@/lib/env";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { calculatePlatformFeeCents } from "@/lib/stripe/server";
 
 type MpPaymentResponse = {
   id?: number | string;
@@ -18,9 +19,7 @@ type MpPaymentResponse = {
   } | null;
 };
 
-async function mpFetch<T>(path: string, init?: RequestInit) {
-  const token =
-    getOptionalEnvAny(["MERCADOPAGO_ACCESS_TOKEN", "MERCADO_PAGO_ACCESS_TOKEN"]) ?? getRequiredEnv("MERCADOPAGO_ACCESS_TOKEN");
+async function mpFetchWithToken<T>(token: string, path: string, init?: RequestInit) {
   const res = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
     headers: {
@@ -38,6 +37,68 @@ async function mpFetch<T>(path: string, init?: RequestInit) {
     json = null;
   }
   return { res, json, text };
+}
+
+type MpTokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; user_id?: number | string };
+
+async function refreshPartnerToken(params: { refresh_token: string }) {
+  const body = new URLSearchParams();
+  body.set("grant_type", "refresh_token");
+  body.set("client_id", getRequiredEnv("MERCADOPAGO_CLIENT_ID"));
+  body.set("client_secret", getRequiredEnv("MERCADOPAGO_CLIENT_SECRET"));
+  body.set("refresh_token", params.refresh_token);
+  const res = await fetch("https://api.mercadopago.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let json: MpTokenResponse | null = null;
+  try {
+    json = text ? (JSON.parse(text) as MpTokenResponse) : null;
+  } catch {
+    json = null;
+  }
+  return { res, json, text };
+}
+
+async function getPartnerMpAccessToken(supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>, partnerId: string) {
+  const { data: partner } = await supabaseAdmin
+    .from("tow_partners")
+    .select("id,mp_access_token,mp_refresh_token,mp_token_expires_at")
+    .eq("id", partnerId)
+    .maybeSingle();
+
+  const access = partner?.mp_access_token ? String(partner.mp_access_token) : "";
+  const refresh = partner?.mp_refresh_token ? String(partner.mp_refresh_token) : "";
+  const expiresAt = partner?.mp_token_expires_at ? String(partner.mp_token_expires_at) : "";
+  const expired = (() => {
+    if (!expiresAt) return false;
+    const t = new Date(expiresAt).getTime();
+    if (!Number.isFinite(t)) return false;
+    return t - Date.now() < 2 * 60 * 1000;
+  })();
+
+  if (access && !expired) return access;
+  if (!refresh) return "";
+
+  const { res, json } = await refreshPartnerToken({ refresh_token: refresh });
+  if (!res.ok || !json?.access_token || !json?.refresh_token) return "";
+
+  const expiresIn = Number(json.expires_in ?? 0);
+  const nextExpiresAt = expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+  await supabaseAdmin
+    .from("tow_partners")
+    .update({
+      mp_access_token: String(json.access_token),
+      mp_refresh_token: String(json.refresh_token),
+      mp_token_expires_at: nextExpiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", partnerId);
+
+  return String(json.access_token);
 }
 
 export async function POST(request: Request) {
@@ -83,10 +144,20 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (!proposal) return NextResponse.json({ error: "Proposta aceita não encontrada." }, { status: 404 });
+    const partnerId = String(proposal.partner_id ?? "").trim();
+    if (!partnerId) return NextResponse.json({ error: "Parceiro inválido." }, { status: 400 });
 
     const totalCents = Math.round(Number(proposal.valor) * 100);
     if (!Number.isFinite(totalCents) || totalCents <= 0) {
       return NextResponse.json({ error: "Valor inválido." }, { status: 400 });
+    }
+
+    const sellerToken = await getPartnerMpAccessToken(supabaseAdmin, partnerId);
+    if (!sellerToken) {
+      return NextResponse.json(
+        { error: "Parceiro não conectou o Mercado Pago para receber via Pix." },
+        { status: 409 },
+      );
     }
 
     const existing = await supabaseAdmin
@@ -97,7 +168,9 @@ export async function POST(request: Request) {
 
     if (existing.data?.provider === "mercadopago" && existing.data.provider_payment_id && existing.data.status !== "approved") {
       const pid = String(existing.data.provider_payment_id);
-      const { res, json } = await mpFetch<MpPaymentResponse>(`/v1/payments/${encodeURIComponent(pid)}`, { method: "GET" });
+      const { res, json } = await mpFetchWithToken<MpPaymentResponse>(sellerToken, `/v1/payments/${encodeURIComponent(pid)}`, {
+        method: "GET",
+      });
       if (res.ok && json) {
         const qr = json.point_of_interaction?.transaction_data?.qr_code ?? null;
         const b64 = json.point_of_interaction?.transaction_data?.qr_code_base64 ?? null;
@@ -124,6 +197,10 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     const notificationUrl = `${origin}/api/webhooks/mercadopago`;
 
+    const platformFeeCents = calculatePlatformFeeCents(totalCents);
+    const applicationFee = Number((platformFeeCents / 100).toFixed(2));
+    const driverAmount = totalCents - platformFeeCents;
+
     const mpPayload = {
       transaction_amount: Number((totalCents / 100).toFixed(2)),
       description: `ReboqueSOS - Pedido ${requestId.slice(0, 8)}`,
@@ -131,9 +208,10 @@ export async function POST(request: Request) {
       payer: { email: payerEmail },
       external_reference: requestId,
       notification_url: notificationUrl,
+      application_fee: applicationFee,
     };
 
-    const { res: mpRes, json: mpJson, text: mpText } = await mpFetch<MpPaymentResponse>("/v1/payments", {
+    const { res: mpRes, json: mpJson, text: mpText } = await mpFetchWithToken<MpPaymentResponse>(sellerToken, "/v1/payments", {
       method: "POST",
       headers: { "X-Idempotency-Key": `reboquesos_pix_${requestId}` },
       body: JSON.stringify(mpPayload),
@@ -159,8 +237,8 @@ export async function POST(request: Request) {
         provider: "mercadopago",
         provider_payment_id: mpId,
         method: "pix",
-        platform_fee_amount: 0,
-        driver_amount: 0,
+        platform_fee_amount: platformFeeCents,
+        driver_amount: driverAmount,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "request_id" },
@@ -175,4 +253,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
-

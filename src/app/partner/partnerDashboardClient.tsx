@@ -12,6 +12,7 @@ type PartnerRow = {
   whatsapp_number: string | null;
   ativo: boolean | null;
   stripe_account_id?: string | null;
+  mp_user_id?: string | null;
 };
 
 type ProfileRow = {
@@ -403,6 +404,7 @@ export function PartnerDashboardClient(props: {
   trips: TripRow[];
 }) {
   const displayName = props.partner?.empresa_nome ?? props.profile.nome;
+  const mpConnected = Boolean(props.partner?.mp_user_id);
   const [ativo, setAtivo] = useState(Boolean(props.partner?.ativo));
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -720,6 +722,19 @@ export function PartnerDashboardClient(props: {
     }
   }
 
+  async function connectMercadoPago() {
+    try {
+      const res = await fetch("/api/partner/mercadopago/connect", { method: "GET" });
+      const json = (await res.json().catch(() => null)) as null | { url?: string; error?: string };
+      if (!res.ok) throw new Error(json?.error || "Não foi possível iniciar a conexão.");
+      const url = json?.url ? String(json.url) : "";
+      if (!url) throw new Error("Resposta inválida do servidor.");
+      window.location.href = url;
+    } catch (e) {
+      setBalanceError(e instanceof Error ? e.message : "Não foi possível conectar Mercado Pago.");
+    }
+  }
+
   async function payoutAll() {
     setIsPayouting(true);
     setPayoutMessage(null);
@@ -841,6 +856,13 @@ export function PartnerDashboardClient(props: {
               onClick={openStripeDashboard}
             >
               Abrir painel Stripe
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
+              onClick={connectMercadoPago}
+            >
+              {mpConnected ? "Mercado Pago: conectado" : "Conectar Mercado Pago (Pix)"}
             </button>
           </div>
         </div>
