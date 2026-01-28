@@ -124,6 +124,27 @@ export function TripTrackingPageClient(props: { tripId: string }) {
     };
   }, [data]);
 
+  useEffect(() => {
+    const tripId = data?.trip?.id ? String(data.trip.id) : "";
+    const tripStatus = data?.trip?.status ? String(data.trip.status) : "";
+    const requestId = data?.trip?.request_id ? String(data.trip.request_id) : "";
+    const reqStatus = data?.request?.status ? String(data.request.status) : "";
+    const ended = tripStatus === "finalizado" || tripStatus === "cancelado" || reqStatus === "PAGO" || reqStatus === "CANCELADO";
+
+    try {
+      if (ended) {
+        window.localStorage.removeItem("reboquesos_active_trip_id");
+        window.localStorage.removeItem("reboquesos_active_request_id");
+        return;
+      }
+
+      if (tripId) window.localStorage.setItem("reboquesos_active_trip_id", tripId);
+      if (requestId) window.localStorage.setItem("reboquesos_active_request_id", requestId);
+    } catch {
+      return;
+    }
+  }, [data]);
+
   if (error) {
     return (
       <div className="mx-auto w-full max-w-xl rounded-xl border bg-white p-6">

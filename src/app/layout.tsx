@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Montserrat } from "next/font/google";
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
+import { ClientActiveTripRedirector } from "@/components/ClientActiveTripRedirector";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -30,6 +31,7 @@ export default function RootLayout({
         className={`${montserrat.variable} ${geistMono.variable} min-h-dvh bg-brand-white text-brand-black font-sans antialiased`}
       >
         <AppHeader />
+        <ClientActiveTripRedirector />
         <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">{children}</main>
       </body>
     </html>
