@@ -24,12 +24,52 @@ function digitsOnly(value: string) {
   return value.replace(/\D+/g, "");
 }
 
-function normalizeBrazilPhones(input: string) {
-  let d = digitsOnly(input);
-  if (d.startsWith("55") && d.length > 11) d = d.slice(2);
-  if (d.length === 11 && d[2] === "9") return { mobilePhone: d, phone: undefined as string | undefined };
-  if (d.length === 10 || d.length === 11) return { phone: d, mobilePhone: undefined as string | undefined };
-  return { phone: undefined as string | undefined, mobilePhone: undefined as string | undefined };
+function buildPhoneCandidates(input: string) {
+  const raw = digitsOnly(input);
+  if (!raw) return [];
+  const list = new Set<string>();
+  list.add(raw);
+  if (raw.startsWith("55") && raw.length > 11) list.add(raw.slice(2));
+  if (!raw.startsWith("55")) list.add(`55${raw}`);
+  return Array.from(list);
+}
+
+async function createAsaasCustomer(args: {
+  name: string;
+  email?: string;
+  externalReference: string;
+  rawPhone?: string;
+}) {
+  const base = {
+    name: args.name,
+    ...(args.email ? { email: args.email } : {}),
+    externalReference: args.externalReference,
+  };
+
+  const phoneCandidates = buildPhoneCandidates(args.rawPhone ?? "");
+  const attempts: Array<Record<string, unknown>> = [];
+
+  if (!phoneCandidates.length) {
+    attempts.push(base);
+  } else {
+    for (const cand of phoneCandidates) {
+      const isMobile = (cand.length === 11 && cand[2] === "9") || (cand.length === 13 && cand.startsWith("55") && cand[4] === "9");
+      attempts.push({ ...base, ...(isMobile ? { mobilePhone: cand } : { phone: cand }) });
+    }
+    attempts.push(base);
+  }
+
+  let last: { ok: boolean; status: number; json: AsaasCustomer | null; text: string } | null = null;
+  for (const payload of attempts) {
+    const res = await asaasFetch<AsaasCustomer>("/v3/customers", { method: "POST", body: JSON.stringify(payload) });
+    last = res;
+    if (res.ok && res.json?.id) return res;
+    const msg = extractAsaasErrorMessage(res.json) || res.text;
+    if (msg && /celular informado é inválido/i.test(String(msg))) continue;
+    if (msg && /telefone informado é inválido/i.test(String(msg))) continue;
+    break;
+  }
+  return last ?? { ok: false as const, status: 500, json: null, text: "Falha ao criar cliente." };
 }
 
 function isEmailProbablyValid(email: string) {
@@ -195,17 +235,12 @@ export async function POST(request: Request) {
       return `guest-${tag}@reboque-sos.vercel.app`;
     })();
     const rawPhone = reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : "";
-    const phones = normalizeBrazilPhones(rawPhone);
 
-    const customerRes = await asaasFetch<AsaasCustomer>("/v3/customers", {
-      method: "POST",
-      body: JSON.stringify({
-        name: customerName,
-        ...(isEmailProbablyValid(customerEmail) ? { email: customerEmail } : {}),
-        ...(phones.mobilePhone ? { mobilePhone: phones.mobilePhone } : {}),
-        ...(phones.phone ? { phone: phones.phone } : {}),
-        externalReference: requestId,
-      }),
+    const customerRes = await createAsaasCustomer({
+      name: customerName,
+      email: isEmailProbablyValid(customerEmail) ? customerEmail : undefined,
+      externalReference: requestId,
+      rawPhone,
     });
     if (!customerRes.ok || !customerRes.json?.id) {
       const asaasMsg = extractAsaasErrorMessage(customerRes.json) || (customerRes.text ? String(customerRes.text).slice(0, 500) : null);
