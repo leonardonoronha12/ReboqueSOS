@@ -18,7 +18,7 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-[70]">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div className={cn("w-full max-w-lg rounded-2xl border border-brand-border/20 bg-white shadow-soft")}>

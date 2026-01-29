@@ -102,6 +102,7 @@ export function RequestForm() {
   const [locationModalAddress, setLocationModalAddress] = useState<string | null>(null);
   const [isResolvingLocationAddress, setIsResolvingLocationAddress] = useState(false);
   const [locationModalError, setLocationModalError] = useState<string | null>(null);
+  const locationMapRef = useRef<google.maps.Map | null>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded: isGoogleMapsLoaded } = useJsApiLoader({
@@ -380,6 +381,14 @@ export function RequestForm() {
       { enableHighAccuracy: true, timeout: 12000 },
     );
   }
+
+  useEffect(() => {
+    if (!isLocationModalOpen) return;
+    if (!locationModalCoords) return;
+    const map = locationMapRef.current;
+    if (!map) return;
+    map.panTo(locationModalCoords);
+  }, [isLocationModalOpen, locationModalCoords]);
 
   async function ensureCoords() {
     if (coords) return { coords, address: endereco };
@@ -744,25 +753,43 @@ export function RequestForm() {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-brand-border/20 bg-zinc-50">
-            <div className="h-[360px] w-full">
+            <div className="relative h-[360px] w-full">
               {apiKey && isGoogleMapsLoaded && locationModalCoords ? (
                 <GoogleMap
                   center={locationModalCoords}
                   zoom={17}
                   mapContainerStyle={{ width: "100%", height: "100%" }}
-                  options={{ disableDefaultUI: true, zoomControl: true, clickableIcons: false, gestureHandling: "greedy" }}
+                  onLoad={(map) => {
+                    locationMapRef.current = map;
+                    map.panTo(locationModalCoords);
+                  }}
+                  onUnmount={() => {
+                    locationMapRef.current = null;
+                  }}
+                  onIdle={() => {
+                    const map = locationMapRef.current;
+                    const center = map?.getCenter();
+                    const lat = center?.lat();
+                    const lng = center?.lng();
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                    const next = { lat: Number(lat), lng: Number(lng) };
+                    setLocationModalError(null);
+                    setLocationModalCoords((prev) => {
+                      if (!prev) return next;
+                      const same = Math.abs(prev.lat - next.lat) < 0.0000005 && Math.abs(prev.lng - next.lng) < 0.0000005;
+                      return same ? prev : next;
+                    });
+                  }}
+                  options={{
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    clickableIcons: false,
+                    gestureHandling: "greedy",
+                    fullscreenControl: false,
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                  }}
                 >
-                  <MarkerF
-                    position={locationModalCoords}
-                    draggable
-                    onDragEnd={(e) => {
-                      const lat = e.latLng?.lat();
-                      const lng = e.latLng?.lng();
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-                      setLocationModalCoords({ lat: Number(lat), lng: Number(lng) });
-                      setLocationModalError(null);
-                    }}
-                  />
                 </GoogleMap>
               ) : (
                 <div className="grid h-full place-items-center p-6">
@@ -771,10 +798,23 @@ export function RequestForm() {
                   </div>
                 </div>
               )}
+              {apiKey && isGoogleMapsLoaded && locationModalCoords ? (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                  <div className="drop-shadow-md">
+                    <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M32 4C21.5 4 13 12.5 13 23c0 15 19 37 19 37s19-22 19-37C51 12.5 42.5 4 32 4z"
+                        fill="#E10600"
+                      />
+                      <circle cx="32" cy="23" r="7.5" fill="white" opacity="0.95" />
+                    </svg>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="text-xs text-brand-text2">Arraste o marcador para ajustar o local exato.</div>
+          <div className="text-xs text-brand-text2">Mova o mapa para ajustar o local exato.</div>
         </div>
       </Modal>
 
