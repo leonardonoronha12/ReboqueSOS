@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 
+import { Modal } from "@/components/ui/Modal";
 import { Sheet } from "@/components/ui/Sheet";
 
 type Coords = { lat: number; lng: number };
@@ -95,6 +96,12 @@ export function RequestForm() {
   const [destinoPredictions, setDestinoPredictions] = useState<AddressPrediction[]>([]);
   const [isDestinoAutocompleteOpen, setIsDestinoAutocompleteOpen] = useState(false);
   const [isLoadingDestinoAutocomplete, setIsLoadingDestinoAutocomplete] = useState(false);
+
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [locationModalCoords, setLocationModalCoords] = useState<Coords | null>(null);
+  const [locationModalAddress, setLocationModalAddress] = useState<string | null>(null);
+  const [isResolvingLocationAddress, setIsResolvingLocationAddress] = useState(false);
+  const [locationModalError, setLocationModalError] = useState<string | null>(null);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded: isGoogleMapsLoaded } = useJsApiLoader({
@@ -313,19 +320,64 @@ export function RequestForm() {
     return false;
   }, [coords, endereco, modeloVeiculo, nome, telefone]);
 
+  const locationModalLat = locationModalCoords?.lat ?? null;
+  const locationModalLng = locationModalCoords?.lng ?? null;
+
+  useEffect(() => {
+    if (!isLocationModalOpen) return;
+    if (!Number.isFinite(locationModalLat) || !Number.isFinite(locationModalLng)) return;
+    let cancelled = false;
+    const id = window.setTimeout(async () => {
+      try {
+        setIsResolvingLocationAddress(true);
+        const res = await fetch("/api/reverse-geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: locationModalLat, lng: locationModalLng }),
+        });
+        const json = await readJsonMaybe<{ formattedAddress?: string | null; error?: string }>(res);
+        if (cancelled) return;
+        if (!res.ok) {
+          setLocationModalAddress(null);
+          return;
+        }
+        const formatted = String(json?.formattedAddress ?? "").trim();
+        setLocationModalAddress(formatted || null);
+      } catch {
+        if (!cancelled) setLocationModalAddress(null);
+      } finally {
+        if (!cancelled) setIsResolvingLocationAddress(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [isLocationModalOpen, locationModalLat, locationModalLng]);
+
   async function handleGetLocation() {
     if (!navigator.geolocation) {
       setSheetError("Seu navegador não suporta GPS.");
       return;
     }
     setSheetError(null);
+    setLocationModalError(null);
+    setLocationModalAddress(null);
+    setLocationModalCoords(null);
+    setIsLocationModalOpen(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setCoordsSource("gps");
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          setLocationModalError("Não foi possível obter sua localização.");
+          return;
+        }
+        setLocationModalCoords({ lat, lng });
       },
-      () => setSheetError("Não foi possível obter sua localização."),
-      { enableHighAccuracy: true, timeout: 10000 },
+      () => setLocationModalError("Não foi possível obter sua localização."),
+      { enableHighAccuracy: true, timeout: 12000 },
     );
   }
 
@@ -640,6 +692,91 @@ export function RequestForm() {
           </div>
         ) : null}
       </div>
+
+      <Modal
+        open={isLocationModalOpen}
+        title="Selecionar local"
+        onClose={() => {
+          setIsLocationModalOpen(false);
+        }}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              className="btn-secondary w-full sm:w-auto"
+              type="button"
+              onClick={() => setIsLocationModalOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              className="btn-primary w-full disabled:opacity-50 sm:w-auto"
+              type="button"
+              disabled={!locationModalCoords}
+              onClick={() => {
+                if (!locationModalCoords) return;
+                setCoords(locationModalCoords);
+                setCoordsSource("gps");
+                if (locationModalAddress) setEndereco(locationModalAddress);
+                setIsLocationModalOpen(false);
+              }}
+            >
+              Confirmar local
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
+            {locationModalError ? (
+              <span className="text-brand-red">{locationModalError}</span>
+            ) : locationModalAddress ? (
+              <span className="text-brand-black">{locationModalAddress}</span>
+            ) : locationModalCoords ? (
+              <span className="text-brand-black">
+                {locationModalCoords.lat.toFixed(5)}, {locationModalCoords.lng.toFixed(5)}
+              </span>
+            ) : (
+              <span className="text-brand-black">Obtendo sua localização pelo GPS...</span>
+            )}
+            {!locationModalError && isResolvingLocationAddress ? (
+              <span className="ml-2 text-xs text-brand-text2">Atualizando...</span>
+            ) : null}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-brand-border/20 bg-zinc-50">
+            <div className="h-[360px] w-full">
+              {apiKey && isGoogleMapsLoaded && locationModalCoords ? (
+                <GoogleMap
+                  center={locationModalCoords}
+                  zoom={17}
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
+                  options={{ disableDefaultUI: true, zoomControl: true, clickableIcons: false, gestureHandling: "greedy" }}
+                >
+                  <MarkerF
+                    position={locationModalCoords}
+                    draggable
+                    onDragEnd={(e) => {
+                      const lat = e.latLng?.lat();
+                      const lng = e.latLng?.lng();
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                      setLocationModalCoords({ lat: Number(lat), lng: Number(lng) });
+                      setLocationModalError(null);
+                    }}
+                  />
+                </GoogleMap>
+              ) : (
+                <div className="grid h-full place-items-center p-6">
+                  <div className="text-sm text-brand-text2">
+                    {!apiKey ? "Google Maps não configurado." : !locationModalCoords ? "Carregando mapa..." : "Carregando mapa..."}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="text-xs text-brand-text2">Arraste o marcador para ajustar o local exato.</div>
+        </div>
+      </Modal>
 
       <Sheet
         open={openSheet}
