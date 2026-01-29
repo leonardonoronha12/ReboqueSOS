@@ -177,6 +177,25 @@ export async function POST(request: Request) {
     const { first, last } = splitName(fullName);
     if (!first || !last) return NextResponse.json({ error: "Informe nome e sobrenome." }, { status: 400 });
 
+    const existingBusinessType = (existingAccount as { business_type?: string | null })?.business_type ?? null;
+    if (accountId && existingBusinessType && existingBusinessType !== "individual") {
+      accountId = null;
+      existingAccount = null;
+    }
+
+    const existingVerificationStatus =
+      (existingAccount as { individual?: { verification?: { status?: string | null } | null } | null })?.individual
+        ?.verification?.status ?? null;
+    const isVerified = existingVerificationStatus === "verified";
+    const existingIdNumber = digitsOnly(
+      String((existingAccount as { individual?: { id_number?: string | null } | null })?.individual?.id_number ?? ""),
+    );
+
+    if (accountId && isVerified && existingIdNumber && existingIdNumber !== cpf) {
+      accountId = null;
+      existingAccount = null;
+    }
+
     if (!accountId) {
       const created = await stripe.accounts.create({
         type: "custom",
@@ -199,11 +218,6 @@ export async function POST(request: Request) {
     const ip = getClientIp(request);
     const now = Math.floor(Date.now() / 1000);
 
-    const isVerified = (() => {
-      const status = (existingAccount as { individual?: { verification?: { status?: string | null } | null } | null })
-        ?.individual?.verification?.status;
-      return status === "verified";
-    })();
     const shouldAttachTestDocument = stripeTestMode && !isVerified;
 
     await stripe.accounts.update(accountId, {
@@ -223,7 +237,7 @@ export async function POST(request: Request) {
           postal_code: postal,
           country,
         },
-        id_number: cpf,
+        ...(!isVerified ? { id_number: cpf } : {}),
         political_exposure: "none",
         ...(shouldAttachTestDocument ? { verification: { document: { front: "file_identity_document_success" } } } : {}),
       },
