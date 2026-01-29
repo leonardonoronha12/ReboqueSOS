@@ -163,11 +163,14 @@ export async function POST(request: Request) {
 
     const stripe = getStripeServer();
     let accountId = partner?.stripe_account_id ?? null;
+    let existingAccount: unknown | null = null;
     if (accountId) {
       const existing = await stripe.accounts.retrieve(accountId);
+      existingAccount = existing;
       const type = (existing as { type?: string }).type ?? null;
       if (type && type !== "custom") {
         accountId = null;
+        existingAccount = null;
       }
     }
 
@@ -186,6 +189,7 @@ export async function POST(request: Request) {
         metadata: { user_id: user.id, app: "reboqueSOS" },
       });
       accountId = created.id;
+      existingAccount = created;
       await supabaseAdmin
         .from("tow_partners")
         .update({ stripe_account_id: accountId, updated_at: new Date().toISOString() })
@@ -194,6 +198,13 @@ export async function POST(request: Request) {
 
     const ip = getClientIp(request);
     const now = Math.floor(Date.now() / 1000);
+
+    const isVerified = (() => {
+      const status = (existingAccount as { individual?: { verification?: { status?: string | null } | null } | null })
+        ?.individual?.verification?.status;
+      return status === "verified";
+    })();
+    const shouldAttachTestDocument = stripeTestMode && !isVerified;
 
     await stripe.accounts.update(accountId, {
       email,
@@ -214,7 +225,7 @@ export async function POST(request: Request) {
         },
         id_number: cpf,
         political_exposure: "none",
-        verification: stripeTestMode ? { document: { front: "file_identity_document_success" } } : undefined,
+        ...(shouldAttachTestDocument ? { verification: { document: { front: "file_identity_document_success" } } } : {}),
       },
       tos_acceptance: ip ? { date: now, ip } : { date: now },
     });
