@@ -11,6 +11,7 @@ type PixResponse = {
   qrCodeBase64?: string;
   expiresAt?: string | null;
   error?: string;
+  details?: unknown;
 };
 
 async function readJsonResponse<T>(res: Response) {
@@ -41,7 +42,19 @@ export function PixCheckoutClient(props: { requestId: string }) {
       });
       const parsed = await readJsonResponse<PixResponse>(res);
       if (!parsed.ok) throw new Error("Resposta inválida do servidor ao criar Pix.");
-      if (!res.ok) throw new Error(parsed.data?.error || "Falha ao criar Pix.");
+      if (!res.ok) {
+        const detailsText = (() => {
+          const d = parsed.data?.details;
+          if (!d) return "";
+          if (typeof d === "string") return d;
+          try {
+            return JSON.stringify(d);
+          } catch {
+            return "";
+          }
+        })();
+        throw new Error(`${parsed.data?.error || "Falha ao criar Pix."}${detailsText ? ` (${detailsText})` : ""}`);
+      }
       if (!cancelled) {
         setData(parsed.data);
         setStatus("awaiting");

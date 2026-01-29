@@ -225,7 +225,7 @@ export async function POST(request: Request) {
 
     const platformFeeCents = calculatePlatformFeeCents(totalCents);
     const driverAmountCents = totalCents - platformFeeCents;
-    const partnerPercent = Math.max(0, Math.min(100, Number(((driverAmountCents / totalCents) * 100).toFixed(4))));
+    const partnerPercent = Math.max(0, Math.min(100, Number(((driverAmountCents / totalCents) * 100).toFixed(2))));
 
     const customerName = (reqRow.cliente_nome ? String(reqRow.cliente_nome) : "").trim() || "Cliente";
     const customerEmail = (() => {
@@ -263,7 +263,11 @@ export async function POST(request: Request) {
       }),
     });
     if (!payRes.ok || !payRes.json?.id) {
-      return NextResponse.json({ error: "Falha ao criar Pix.", details: payRes.json ?? payRes.text }, { status: 502 });
+      const asaasMsg = extractAsaasErrorMessage(payRes.json) || (payRes.text ? String(payRes.text).slice(0, 500) : null);
+      return NextResponse.json(
+        { error: `Falha ao criar Pix.${asaasMsg ? ` ${asaasMsg}` : ""}`, details: payRes.json ?? payRes.text },
+        { status: 502 },
+      );
     }
 
     const asaasPaymentId = String(payRes.json.id);
