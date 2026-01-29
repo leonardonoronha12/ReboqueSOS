@@ -17,6 +17,7 @@ export async function GET() {
   const whatsappProvider = process.env.WHATSAPP_PROVIDER ?? "custom";
   const stripeKey = process.env.STRIPE_SECRET_KEY ?? null;
   const stripeMode = stripeKey?.startsWith("sk_test_") ? "test" : stripeKey?.startsWith("sk_live_") ? "live" : null;
+  const asaasEnv = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV) : null;
 
   return NextResponse.json(
     {
@@ -47,6 +48,11 @@ export async function GET() {
         publishable_key_configured: pickSet("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
         webhook_secret_configured: pickSet("STRIPE_WEBHOOK_SECRET"),
         mode: stripeMode,
+      },
+      asaas: {
+        api_key_configured: pickSet("ASAAS_API_KEY"),
+        webhook_token_configured: pickSet("ASAAS_WEBHOOK_TOKEN"),
+        env: asaasEnv,
       },
     },
     { status: 200 },

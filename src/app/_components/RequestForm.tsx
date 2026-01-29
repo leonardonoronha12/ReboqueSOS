@@ -104,6 +104,20 @@ export function RequestForm() {
   const [locationModalError, setLocationModalError] = useState<string | null>(null);
   const locationMapRef = useRef<google.maps.Map | null>(null);
 
+  const [isEnderecoModalOpen, setIsEnderecoModalOpen] = useState(false);
+  const [enderecoModalCoords, setEnderecoModalCoords] = useState<Coords | null>(null);
+  const [enderecoModalAddress, setEnderecoModalAddress] = useState<string | null>(null);
+  const [isResolvingEnderecoAddress, setIsResolvingEnderecoAddress] = useState(false);
+  const [enderecoModalError, setEnderecoModalError] = useState<string | null>(null);
+  const enderecoMapRef = useRef<google.maps.Map | null>(null);
+
+  const [isDestinoModalOpen, setIsDestinoModalOpen] = useState(false);
+  const [destinoModalCoords, setDestinoModalCoords] = useState<Coords | null>(null);
+  const [destinoModalAddress, setDestinoModalAddress] = useState<string | null>(null);
+  const [isResolvingDestinoAddress, setIsResolvingDestinoAddress] = useState(false);
+  const [destinoModalError, setDestinoModalError] = useState<string | null>(null);
+  const destinoMapRef = useRef<google.maps.Map | null>(null);
+
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const { isLoaded: isGoogleMapsLoaded } = useJsApiLoader({
     id: "reboquesos-google-maps-places-ptbr",
@@ -357,6 +371,78 @@ export function RequestForm() {
     };
   }, [isLocationModalOpen, locationModalLat, locationModalLng]);
 
+  const enderecoModalLat = enderecoModalCoords?.lat ?? null;
+  const enderecoModalLng = enderecoModalCoords?.lng ?? null;
+
+  useEffect(() => {
+    if (!isEnderecoModalOpen) return;
+    if (!Number.isFinite(enderecoModalLat) || !Number.isFinite(enderecoModalLng)) return;
+    let cancelled = false;
+    const id = window.setTimeout(async () => {
+      try {
+        setIsResolvingEnderecoAddress(true);
+        const res = await fetch("/api/reverse-geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: enderecoModalLat, lng: enderecoModalLng }),
+        });
+        const json = await readJsonMaybe<{ formattedAddress?: string | null; error?: string }>(res);
+        if (cancelled) return;
+        if (!res.ok) {
+          setEnderecoModalAddress(null);
+          return;
+        }
+        const formatted = String(json?.formattedAddress ?? "").trim();
+        setEnderecoModalAddress(formatted || null);
+      } catch {
+        if (!cancelled) setEnderecoModalAddress(null);
+      } finally {
+        if (!cancelled) setIsResolvingEnderecoAddress(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [enderecoModalLat, enderecoModalLng, isEnderecoModalOpen]);
+
+  const destinoModalLat = destinoModalCoords?.lat ?? null;
+  const destinoModalLng = destinoModalCoords?.lng ?? null;
+
+  useEffect(() => {
+    if (!isDestinoModalOpen) return;
+    if (!Number.isFinite(destinoModalLat) || !Number.isFinite(destinoModalLng)) return;
+    let cancelled = false;
+    const id = window.setTimeout(async () => {
+      try {
+        setIsResolvingDestinoAddress(true);
+        const res = await fetch("/api/reverse-geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: destinoModalLat, lng: destinoModalLng }),
+        });
+        const json = await readJsonMaybe<{ formattedAddress?: string | null; error?: string }>(res);
+        if (cancelled) return;
+        if (!res.ok) {
+          setDestinoModalAddress(null);
+          return;
+        }
+        const formatted = String(json?.formattedAddress ?? "").trim();
+        setDestinoModalAddress(formatted || null);
+      } catch {
+        if (!cancelled) setDestinoModalAddress(null);
+      } finally {
+        if (!cancelled) setIsResolvingDestinoAddress(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [destinoModalLat, destinoModalLng, isDestinoModalOpen]);
+
   async function handleGetLocation() {
     if (!navigator.geolocation) {
       setSheetError("Seu navegador não suporta GPS.");
@@ -382,6 +468,102 @@ export function RequestForm() {
     );
   }
 
+  async function handlePickEnderecoOnMap() {
+    setSheetError(null);
+    setIsAddressAutocompleteOpen(false);
+    setEnderecoModalError(null);
+    setEnderecoModalAddress(null);
+    setEnderecoModalCoords(coordsSource === "address" ? coords : coords ?? null);
+    setIsEnderecoModalOpen(true);
+
+    if (coordsSource === "address" && coords) return;
+
+    const typed = endereco.trim();
+    if (typed.length >= 3) {
+      try {
+        const res = await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: typed }),
+        });
+        const json = await readJsonMaybe<{ location?: { lat: number; lng: number }; formattedAddress?: string | null; error?: string }>(res);
+        if (res.ok && json?.location && Number.isFinite(json.location.lat) && Number.isFinite(json.location.lng)) {
+          setEnderecoModalCoords({ lat: Number(json.location.lat), lng: Number(json.location.lng) });
+          const formatted = String(json.formattedAddress ?? "").trim();
+          if (formatted) setEnderecoModalAddress(formatted);
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+
+    if (coords) {
+      setEnderecoModalCoords(coords);
+      return;
+    }
+
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setEnderecoModalCoords({ lat, lng });
+      },
+      () => null,
+      { enableHighAccuracy: true, timeout: 12000 },
+    );
+  }
+
+  async function handlePickDestinoOnMap() {
+    setSheetError(null);
+    setIsDestinoAutocompleteOpen(false);
+    setDestinoModalError(null);
+    setDestinoModalAddress(null);
+    setDestinoModalCoords(destinoCoords ?? null);
+    setIsDestinoModalOpen(true);
+
+    if (destinoCoords) return;
+
+    const typed = destinoEndereco.trim();
+    if (typed.length >= 3) {
+      try {
+        const res = await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: typed }),
+        });
+        const json = await readJsonMaybe<{ location?: { lat: number; lng: number }; formattedAddress?: string | null; error?: string }>(res);
+        if (res.ok && json?.location && Number.isFinite(json.location.lat) && Number.isFinite(json.location.lng)) {
+          setDestinoModalCoords({ lat: Number(json.location.lat), lng: Number(json.location.lng) });
+          const formatted = String(json.formattedAddress ?? "").trim();
+          if (formatted) setDestinoModalAddress(formatted);
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+
+    if (coords) {
+      setDestinoModalCoords(coords);
+      return;
+    }
+
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setDestinoModalCoords({ lat, lng });
+      },
+      () => null,
+      { enableHighAccuracy: true, timeout: 12000 },
+    );
+  }
+
   useEffect(() => {
     if (!isLocationModalOpen) return;
     if (!locationModalCoords) return;
@@ -389,6 +571,22 @@ export function RequestForm() {
     if (!map) return;
     map.panTo(locationModalCoords);
   }, [isLocationModalOpen, locationModalCoords]);
+
+  useEffect(() => {
+    if (!isEnderecoModalOpen) return;
+    if (!enderecoModalCoords) return;
+    const map = enderecoMapRef.current;
+    if (!map) return;
+    map.panTo(enderecoModalCoords);
+  }, [enderecoModalCoords, isEnderecoModalOpen]);
+
+  useEffect(() => {
+    if (!isDestinoModalOpen) return;
+    if (!destinoModalCoords) return;
+    const map = destinoMapRef.current;
+    if (!map) return;
+    map.panTo(destinoModalCoords);
+  }, [destinoModalCoords, isDestinoModalOpen]);
 
   async function ensureCoords() {
     if (coords) return { coords, address: endereco };
@@ -818,6 +1016,223 @@ export function RequestForm() {
         </div>
       </Modal>
 
+      <Modal
+        open={isEnderecoModalOpen}
+        title="Selecionar endereço"
+        onClose={() => {
+          setIsEnderecoModalOpen(false);
+        }}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button className="btn-secondary w-full sm:w-auto" type="button" onClick={() => setIsEnderecoModalOpen(false)}>
+              Cancelar
+            </button>
+            <button
+              className="btn-primary w-full disabled:opacity-50 sm:w-auto"
+              type="button"
+              disabled={!enderecoModalCoords}
+              onClick={() => {
+                if (!enderecoModalCoords) return;
+                setCoords(enderecoModalCoords);
+                setCoordsSource("address");
+                if (enderecoModalAddress) setEndereco(enderecoModalAddress);
+                setIsEnderecoModalOpen(false);
+              }}
+            >
+              Confirmar endereço
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
+            {enderecoModalError ? (
+              <span className="text-brand-red">{enderecoModalError}</span>
+            ) : enderecoModalAddress ? (
+              <span className="text-brand-black">{enderecoModalAddress}</span>
+            ) : enderecoModalCoords ? (
+              <span className="text-brand-black">
+                {enderecoModalCoords.lat.toFixed(5)}, {enderecoModalCoords.lng.toFixed(5)}
+              </span>
+            ) : (
+              <span className="text-brand-black">Carregando mapa...</span>
+            )}
+            {!enderecoModalError && isResolvingEnderecoAddress ? (
+              <span className="ml-2 text-xs text-brand-text2">Atualizando...</span>
+            ) : null}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-brand-border/20 bg-zinc-50">
+            <div className="relative h-[360px] w-full">
+              {apiKey && isGoogleMapsLoaded && enderecoModalCoords ? (
+                <GoogleMap
+                  center={enderecoModalCoords}
+                  zoom={16}
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
+                  onLoad={(map) => {
+                    enderecoMapRef.current = map;
+                    map.panTo(enderecoModalCoords);
+                  }}
+                  onUnmount={() => {
+                    enderecoMapRef.current = null;
+                  }}
+                  onIdle={() => {
+                    const map = enderecoMapRef.current;
+                    const center = map?.getCenter();
+                    const lat = center?.lat();
+                    const lng = center?.lng();
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                    const next = { lat: Number(lat), lng: Number(lng) };
+                    setEnderecoModalError(null);
+                    setEnderecoModalCoords((prev) => {
+                      if (!prev) return next;
+                      const same = Math.abs(prev.lat - next.lat) < 0.0000005 && Math.abs(prev.lng - next.lng) < 0.0000005;
+                      return same ? prev : next;
+                    });
+                  }}
+                  options={{
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    clickableIcons: false,
+                    gestureHandling: "greedy",
+                    fullscreenControl: false,
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                  }}
+                />
+              ) : (
+                <div className="grid h-full place-items-center p-6">
+                  <div className="text-sm text-brand-text2">{!apiKey ? "Google Maps não configurado." : "Carregando mapa..."}</div>
+                </div>
+              )}
+              {apiKey && isGoogleMapsLoaded && enderecoModalCoords ? (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                  <div className="drop-shadow-md">
+                    <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M32 4C21.5 4 13 12.5 13 23c0 15 19 37 19 37s19-22 19-37C51 12.5 42.5 4 32 4z"
+                        fill="#E10600"
+                      />
+                      <circle cx="32" cy="23" r="7.5" fill="white" opacity="0.95" />
+                    </svg>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="text-xs text-brand-text2">Mova o mapa para ajustar o endereço.</div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={isDestinoModalOpen}
+        title="Selecionar destino"
+        onClose={() => {
+          setIsDestinoModalOpen(false);
+        }}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button className="btn-secondary w-full sm:w-auto" type="button" onClick={() => setIsDestinoModalOpen(false)}>
+              Cancelar
+            </button>
+            <button
+              className="btn-primary w-full disabled:opacity-50 sm:w-auto"
+              type="button"
+              disabled={!destinoModalCoords}
+              onClick={() => {
+                if (!destinoModalCoords) return;
+                setDestinoCoords(destinoModalCoords);
+                if (destinoModalAddress) setDestinoEndereco(destinoModalAddress);
+                setIsDestinoModalOpen(false);
+              }}
+            >
+              Confirmar destino
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
+            {destinoModalError ? (
+              <span className="text-brand-red">{destinoModalError}</span>
+            ) : destinoModalAddress ? (
+              <span className="text-brand-black">{destinoModalAddress}</span>
+            ) : destinoModalCoords ? (
+              <span className="text-brand-black">
+                {destinoModalCoords.lat.toFixed(5)}, {destinoModalCoords.lng.toFixed(5)}
+              </span>
+            ) : (
+              <span className="text-brand-black">Carregando mapa...</span>
+            )}
+            {!destinoModalError && isResolvingDestinoAddress ? (
+              <span className="ml-2 text-xs text-brand-text2">Atualizando...</span>
+            ) : null}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-brand-border/20 bg-zinc-50">
+            <div className="relative h-[360px] w-full">
+              {apiKey && isGoogleMapsLoaded && destinoModalCoords ? (
+                <GoogleMap
+                  center={destinoModalCoords}
+                  zoom={16}
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
+                  onLoad={(map) => {
+                    destinoMapRef.current = map;
+                    map.panTo(destinoModalCoords);
+                  }}
+                  onUnmount={() => {
+                    destinoMapRef.current = null;
+                  }}
+                  onIdle={() => {
+                    const map = destinoMapRef.current;
+                    const center = map?.getCenter();
+                    const lat = center?.lat();
+                    const lng = center?.lng();
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+                    const next = { lat: Number(lat), lng: Number(lng) };
+                    setDestinoModalError(null);
+                    setDestinoModalCoords((prev) => {
+                      if (!prev) return next;
+                      const same = Math.abs(prev.lat - next.lat) < 0.0000005 && Math.abs(prev.lng - next.lng) < 0.0000005;
+                      return same ? prev : next;
+                    });
+                  }}
+                  options={{
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    clickableIcons: false,
+                    gestureHandling: "greedy",
+                    fullscreenControl: false,
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                  }}
+                />
+              ) : (
+                <div className="grid h-full place-items-center p-6">
+                  <div className="text-sm text-brand-text2">{!apiKey ? "Google Maps não configurado." : "Carregando mapa..."}</div>
+                </div>
+              )}
+              {apiKey && isGoogleMapsLoaded && destinoModalCoords ? (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+                  <div className="drop-shadow-md">
+                    <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M32 4C21.5 4 13 12.5 13 23c0 15 19 37 19 37s19-22 19-37C51 12.5 42.5 4 32 4z"
+                        fill="#E10600"
+                      />
+                      <circle cx="32" cy="23" r="7.5" fill="white" opacity="0.95" />
+                    </svg>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="text-xs text-brand-text2">Mova o mapa para ajustar o destino.</div>
+        </div>
+      </Modal>
+
       <Sheet
         open={openSheet}
         title="Pedir reboque"
@@ -870,7 +1285,16 @@ export function RequestForm() {
           </div>
 
           <div>
-            <div className="text-sm font-bold text-brand-black">Endereço (opcional)</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-bold text-brand-black">Endereço</div>
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand-black underline"
+                onClick={() => void handlePickEnderecoOnMap()}
+              >
+                Usar mapa
+              </button>
+            </div>
             <div className="relative">
               <input
                 className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"
@@ -922,7 +1346,16 @@ export function RequestForm() {
           </div>
 
           <div>
-            <div className="text-sm font-bold text-brand-black">Destino do veículo</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-bold text-brand-black">Destino do veículo</div>
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand-black underline"
+                onClick={() => void handlePickDestinoOnMap()}
+              >
+                Usar mapa
+              </button>
+            </div>
             <div className="relative">
               <input
                 className="mt-1 w-full rounded-2xl border border-brand-border/20 bg-white px-3 py-2 text-brand-black placeholder:text-brand-text2 focus:border-brand-yellow/60 focus:outline-none focus:ring-4 focus:ring-brand-yellow/20"

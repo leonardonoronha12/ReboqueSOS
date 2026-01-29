@@ -83,6 +83,16 @@ export default async function SetupPage() {
             note="Somente servidor. Usado para validar assinatura do webhook."
           />
           <EnvStatusRow
+            name="ASAAS_API_KEY"
+            isSet={isEnvSet("ASAAS_API_KEY")}
+            note="Conta raiz. Necessário para Pix + split."
+          />
+          <EnvStatusRow
+            name="ASAAS_WEBHOOK_TOKEN"
+            isSet={isEnvSet("ASAAS_WEBHOOK_TOKEN")}
+            note="Opcional. Token do webhook /api/webhooks/asaas."
+          />
+          <EnvStatusRow
             name="WHATSAPP_PROVIDER"
             isSet={isEnvSet("WHATSAPP_PROVIDER")}
             note="twilio | zapi | custom"
@@ -108,6 +118,10 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 STRIPE_SECRET_KEY=
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
+
+ASAAS_API_KEY=
+ASAAS_ENV=
+ASAAS_WEBHOOK_TOKEN=
 
 WHATSAPP_PROVIDER=custom
 WHATSAPP_WEBHOOK_URL=
@@ -190,6 +204,24 @@ ZAPI_CLIENT_TOKEN=
 set stripe_account_id = 'acct_XXXXXXXXXXXX'
 where id = 'UUID_DO_PARCEIRO';`}</pre>
           </div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-6">
+          <h2 className="text-lg font-semibold">Asaas (Pix + Split)</h2>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-700">
+            <li>
+              Configure <span className="font-medium">ASAAS_API_KEY</span> (conta raiz).
+            </li>
+            <li>
+              Opcional: <span className="font-medium">ASAAS_ENV=sandbox</span> para testes.
+            </li>
+            <li>
+              Crie o webhook para <span className="font-medium">/api/webhooks/asaas</span> e defina um authToken.
+            </li>
+            <li>
+              Se usar authToken, configure o mesmo valor em <span className="font-medium">ASAAS_WEBHOOK_TOKEN</span>.
+            </li>
+          </ul>
         </div>
 
         <div className="rounded-xl border bg-white p-6">

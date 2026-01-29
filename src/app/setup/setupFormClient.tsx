@@ -13,6 +13,9 @@ type EnvState = {
   STRIPE_SECRET_KEY: string;
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
+  ASAAS_API_KEY: string;
+  ASAAS_ENV: string;
+  ASAAS_WEBHOOK_TOKEN: string;
   WHATSAPP_PROVIDER: "twilio" | "zapi" | "custom";
   WHATSAPP_WEBHOOK_URL: string;
   WHATSAPP_WEBHOOK_BEARER: string;
@@ -36,6 +39,9 @@ const defaultState: EnvState = {
   STRIPE_SECRET_KEY: "",
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "",
   STRIPE_WEBHOOK_SECRET: "",
+  ASAAS_API_KEY: "",
+  ASAAS_ENV: "",
+  ASAAS_WEBHOOK_TOKEN: "",
   WHATSAPP_PROVIDER: "custom",
   WHATSAPP_WEBHOOK_URL: "",
   WHATSAPP_WEBHOOK_BEARER: "",
@@ -99,6 +105,11 @@ function buildEnvFile(state: EnvState) {
   push("STRIPE_WEBHOOK_SECRET", state.STRIPE_WEBHOOK_SECRET);
   lines.push("");
 
+  push("ASAAS_API_KEY", state.ASAAS_API_KEY);
+  push("ASAAS_ENV", state.ASAAS_ENV);
+  push("ASAAS_WEBHOOK_TOKEN", state.ASAAS_WEBHOOK_TOKEN);
+  lines.push("");
+
   push("WHATSAPP_PROVIDER", state.WHATSAPP_PROVIDER);
   push("WHATSAPP_WEBHOOK_URL", state.WHATSAPP_WEBHOOK_URL);
   push("WHATSAPP_WEBHOOK_BEARER", state.WHATSAPP_WEBHOOK_BEARER);
@@ -125,6 +136,8 @@ function buildMaskedEnvFile(state: EnvState) {
     SUPABASE_DB_PASSWORD: mask(state.SUPABASE_DB_PASSWORD),
     STRIPE_SECRET_KEY: mask(state.STRIPE_SECRET_KEY),
     STRIPE_WEBHOOK_SECRET: mask(state.STRIPE_WEBHOOK_SECRET),
+    ASAAS_API_KEY: mask(state.ASAAS_API_KEY),
+    ASAAS_WEBHOOK_TOKEN: mask(state.ASAAS_WEBHOOK_TOKEN),
     TWILIO_AUTH_TOKEN: mask(state.TWILIO_AUTH_TOKEN),
     WHATSAPP_WEBHOOK_BEARER: mask(state.WHATSAPP_WEBHOOK_BEARER),
     ZAPI_TOKEN: mask(state.ZAPI_TOKEN),
@@ -730,6 +743,60 @@ export function SetupFormClient() {
               Preencha também <span className="font-medium">tow_partners.stripe_account_id</span> no Supabase para cada
               parceiro (Connected Account).
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-6">
+          <h3 className="text-base font-semibold">Asaas</h3>
+          <div className="mt-4 space-y-4">
+            <InputRow
+              label="ASAAS_API_KEY"
+              name="ASAAS_API_KEY"
+              value={state.ASAAS_API_KEY}
+              type={showSecrets ? "text" : "password"}
+              placeholder="..."
+              onChange={update}
+              hint="Conta raiz"
+              howTo={
+                <HowToDetails>
+                  <div>
+                    Asaas → <span className="font-medium">Integrações</span> →{" "}
+                    <span className="font-medium">Chaves de API</span>.
+                  </div>
+                </HowToDetails>
+              }
+            />
+            <InputRow
+              label="ASAAS_ENV"
+              name="ASAAS_ENV"
+              value={state.ASAAS_ENV}
+              placeholder="sandbox (ou deixe vazio para produção)"
+              onChange={update}
+              howTo={
+                <HowToDetails>
+                  <div>
+                    Use <span className="font-medium">sandbox</span> para testar no ambiente de sandbox do Asaas.
+                    Se deixar vazio, o app usa produção por padrão.
+                  </div>
+                </HowToDetails>
+              }
+            />
+            <InputRow
+              label="ASAAS_WEBHOOK_TOKEN (opcional)"
+              name="ASAAS_WEBHOOK_TOKEN"
+              value={state.ASAAS_WEBHOOK_TOKEN}
+              type={showSecrets ? "text" : "password"}
+              placeholder="UUID..."
+              onChange={update}
+              hint="/api/webhooks/asaas"
+              howTo={
+                <HowToDetails>
+                  <div>
+                    Defina um token (ex.: UUID) e configure o mesmo valor no webhook do Asaas (authToken).
+                  </div>
+                </HowToDetails>
+              }
+            />
           </div>
         </div>
 
