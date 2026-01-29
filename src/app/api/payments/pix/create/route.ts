@@ -24,6 +24,14 @@ function digitsOnly(value: string) {
   return value.replace(/\D+/g, "");
 }
 
+function normalizeBrazilPhones(input: string) {
+  let d = digitsOnly(input);
+  if (d.startsWith("55") && d.length > 11) d = d.slice(2);
+  if (d.length === 11 && d[2] === "9") return { mobilePhone: d, phone: undefined as string | undefined };
+  if (d.length === 10 || d.length === 11) return { phone: d, mobilePhone: undefined as string | undefined };
+  return { phone: undefined as string | undefined, mobilePhone: undefined as string | undefined };
+}
+
 function isEmailProbablyValid(email: string) {
   const v = email.trim();
   if (!v) return false;
@@ -187,14 +195,15 @@ export async function POST(request: Request) {
       return `guest-${tag}@reboque-sos.vercel.app`;
     })();
     const rawPhone = reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : "";
-    const customerPhone = digitsOnly(rawPhone);
+    const phones = normalizeBrazilPhones(rawPhone);
 
     const customerRes = await asaasFetch<AsaasCustomer>("/v3/customers", {
       method: "POST",
       body: JSON.stringify({
         name: customerName,
         ...(isEmailProbablyValid(customerEmail) ? { email: customerEmail } : {}),
-        ...(customerPhone.length >= 10 ? { mobilePhone: customerPhone } : {}),
+        ...(phones.mobilePhone ? { mobilePhone: phones.mobilePhone } : {}),
+        ...(phones.phone ? { phone: phones.phone } : {}),
         externalReference: requestId,
       }),
     });
