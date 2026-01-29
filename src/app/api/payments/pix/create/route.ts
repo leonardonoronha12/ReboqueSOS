@@ -20,6 +20,27 @@ type AsaasPixQrCode = {
   expirationDate?: string;
 };
 
+function digitsOnly(value: string) {
+  return value.replace(/\D+/g, "");
+}
+
+function isEmailProbablyValid(email: string) {
+  const v = email.trim();
+  if (!v) return false;
+  if (v.length > 180) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function extractAsaasErrorMessage(input: unknown) {
+  const errors = (input as { errors?: Array<{ description?: unknown }> } | null)?.errors;
+  const list = Array.isArray(errors) ? errors : [];
+  const descriptions = list
+    .map((e) => (typeof e?.description === "string" ? e.description.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 6);
+  return descriptions.length ? descriptions.join(" • ") : null;
+}
+
 function getAsaasBaseUrl() {
   const env = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV).toLowerCase() : "";
   if (process.env.ASAAS_BASE_URL) return String(process.env.ASAAS_BASE_URL);
@@ -161,21 +182,28 @@ export async function POST(request: Request) {
     const customerName = (reqRow.cliente_nome ? String(reqRow.cliente_nome) : "").trim() || "Cliente";
     const customerEmail = (() => {
       const email = user?.email ? String(user.email).trim() : "";
-      if (email) return email;
-      return `guest+${requestId.replace(/[^a-zA-Z0-9]/g, "")}@reboquesos.local`;
+      if (isEmailProbablyValid(email)) return email;
+      const tag = requestId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24) || "anon";
+      return `guest-${tag}@reboque-sos.vercel.app`;
     })();
+    const rawPhone = reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : "";
+    const customerPhone = digitsOnly(rawPhone);
 
     const customerRes = await asaasFetch<AsaasCustomer>("/v3/customers", {
       method: "POST",
       body: JSON.stringify({
         name: customerName,
-        email: customerEmail,
-        mobilePhone: reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : undefined,
+        ...(isEmailProbablyValid(customerEmail) ? { email: customerEmail } : {}),
+        ...(customerPhone.length >= 10 ? { mobilePhone: customerPhone } : {}),
         externalReference: requestId,
       }),
     });
     if (!customerRes.ok || !customerRes.json?.id) {
-      return NextResponse.json({ error: "Falha ao criar cliente Pix.", details: customerRes.json ?? customerRes.text }, { status: 502 });
+      const asaasMsg = extractAsaasErrorMessage(customerRes.json) || (customerRes.text ? String(customerRes.text).slice(0, 500) : null);
+      return NextResponse.json(
+        { error: `Falha ao criar cliente Pix.${asaasMsg ? ` ${asaasMsg}` : ""}`, details: customerRes.json ?? customerRes.text },
+        { status: 502 },
+      );
     }
 
     const payRes = await asaasFetch<AsaasPayment>("/v3/payments", {
