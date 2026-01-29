@@ -12,6 +12,7 @@ type PixResponse = {
   expiresAt?: string | null;
   error?: string;
   details?: unknown;
+  action?: "require_cpf_cnpj" | "require_asaas_approval" | null;
 };
 
 async function readJsonResponse<T>(res: Response) {
@@ -30,15 +31,27 @@ export function PixCheckoutClient(props: { requestId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "awaiting" | "paid">("idle");
   const [paidTripId, setPaidTripId] = useState<string | null>(null);
+  const [cpfCnpj, setCpfCnpj] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    async function run() {
-      setError(null);
+    try {
+      const saved = window.localStorage.getItem(`reboquesos.pix.cpfCnpj.${props.requestId}`);
+      if (saved) setCpfCnpj(saved);
+    } catch {
+      return;
+    }
+  }, [props.requestId]);
+
+  async function createPix() {
+    if (isCreating) return;
+    setIsCreating(true);
+    setError(null);
+    try {
       const res = await fetch("/api/payments/pix/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: props.requestId }),
+        body: JSON.stringify({ requestId: props.requestId, cpfCnpj }),
       });
       const parsed = await readJsonResponse<PixResponse>(res);
       if (!parsed.ok) throw new Error("Resposta inválida do servidor ao criar Pix.");
@@ -55,16 +68,19 @@ export function PixCheckoutClient(props: { requestId: string }) {
         })();
         throw new Error(`${parsed.data?.error || "Falha ao criar Pix."}${detailsText ? ` (${detailsText})` : ""}`);
       }
-      if (!cancelled) {
-        setData(parsed.data);
-        setStatus("awaiting");
+      try {
+        window.localStorage.setItem(`reboquesos.pix.cpfCnpj.${props.requestId}`, cpfCnpj);
+      } catch {
+        return;
       }
+      setData(parsed.data);
+      setStatus("awaiting");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao criar Pix.");
+    } finally {
+      setIsCreating(false);
     }
-    run().catch((e) => setError(e instanceof Error ? e.message : "Falha ao criar Pix."));
-    return () => {
-      cancelled = true;
-    };
-  }, [props.requestId]);
+  }
 
   useEffect(() => {
     if (status !== "awaiting") return;
@@ -129,7 +145,27 @@ export function PixCheckoutClient(props: { requestId: string }) {
   if (error) {
     return (
       <div className="rounded-xl border bg-white p-6">
-        <p className="text-sm text-red-700">{error}</p>
+        <div className="space-y-3">
+          <p className="text-sm text-red-700">{error}</p>
+          <div className="space-y-2">
+            <div className="text-sm font-semibold text-brand-black">CPF/CNPJ do pagador</div>
+            <input
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              value={cpfCnpj}
+              onChange={(e) => setCpfCnpj(e.target.value)}
+              inputMode="numeric"
+              placeholder="Somente números"
+            />
+            <button
+              className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              type="button"
+              disabled={isCreating || !cpfCnpj.trim()}
+              onClick={() => void createPix()}
+            >
+              {isCreating ? "Gerando..." : "Tentar novamente"}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -137,7 +173,24 @@ export function PixCheckoutClient(props: { requestId: string }) {
   if (!data) {
     return (
       <div className="rounded-xl border bg-white p-6">
-        <p className="text-sm text-zinc-700">Gerando Pix...</p>
+        <div className="space-y-3">
+          <p className="text-sm text-zinc-700">Para gerar o Pix, informe o CPF ou CNPJ do pagador.</p>
+          <input
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            value={cpfCnpj}
+            onChange={(e) => setCpfCnpj(e.target.value)}
+            inputMode="numeric"
+            placeholder="CPF (11) ou CNPJ (14) - somente números"
+          />
+          <button
+            className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            type="button"
+            disabled={isCreating || !cpfCnpj.trim()}
+            onClick={() => void createPix()}
+          >
+            {isCreating ? "Gerando..." : "Gerar Pix"}
+          </button>
+        </div>
       </div>
     );
   }

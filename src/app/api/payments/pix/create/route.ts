@@ -37,12 +37,14 @@ function buildPhoneCandidates(input: string) {
 async function createAsaasCustomer(args: {
   name: string;
   email?: string;
+  cpfCnpj?: string;
   externalReference: string;
   rawPhone?: string;
 }) {
   const base = {
     name: args.name,
     ...(args.email ? { email: args.email } : {}),
+    ...(args.cpfCnpj ? { cpfCnpj: args.cpfCnpj } : {}),
     externalReference: args.externalReference,
   };
 
@@ -134,9 +136,16 @@ function todayIso() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => null)) as null | { requestId?: string };
+    const body = (await request.json().catch(() => null)) as null | { requestId?: string; cpfCnpj?: string };
     const requestId = String(body?.requestId ?? "").trim();
     if (!requestId) return NextResponse.json({ error: "requestId obrigatório." }, { status: 400 });
+    const cpfCnpj = digitsOnly(String(body?.cpfCnpj ?? ""));
+    if (!cpfCnpj) {
+      return NextResponse.json({ error: "Informe o CPF ou CNPJ do pagador para gerar o Pix." }, { status: 400 });
+    }
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) {
+      return NextResponse.json({ error: "CPF/CNPJ inválido. Use 11 (CPF) ou 14 (CNPJ) dígitos." }, { status: 400 });
+    }
 
     const user = await requireUser();
     const profile = user ? await getUserProfile(user.id) : null;
@@ -235,10 +244,10 @@ export async function POST(request: Request) {
       return `guest-${tag}@reboque-sos.vercel.app`;
     })();
     const rawPhone = reqRow.telefone_cliente ? String(reqRow.telefone_cliente) : "";
-
     const customerRes = await createAsaasCustomer({
       name: customerName,
       email: isEmailProbablyValid(customerEmail) ? customerEmail : undefined,
+      cpfCnpj,
       externalReference: requestId,
       rawPhone,
     });
@@ -264,8 +273,19 @@ export async function POST(request: Request) {
     });
     if (!payRes.ok || !payRes.json?.id) {
       const asaasMsg = extractAsaasErrorMessage(payRes.json) || (payRes.text ? String(payRes.text).slice(0, 500) : null);
+      const needsCpf = asaasMsg ? /cpf|cnpj/i.test(asaasMsg) : false;
+      const needsApproval = asaasMsg ? /pix não está disponível/i.test(asaasMsg) || /conta precisa estar aprovada/i.test(asaasMsg) : false;
+      const friendly = needsApproval
+        ? "Pix indisponível no Asaas: sua conta precisa estar aprovada para usar PIX em produção."
+        : needsCpf
+          ? "Para criar a cobrança Pix, informe CPF/CNPJ do pagador."
+          : null;
       return NextResponse.json(
-        { error: `Falha ao criar Pix.${asaasMsg ? ` ${asaasMsg}` : ""}`, details: payRes.json ?? payRes.text },
+        {
+          error: `${friendly ?? "Falha ao criar Pix."}${asaasMsg ? ` ${asaasMsg}` : ""}`,
+          details: payRes.json ?? payRes.text,
+          action: needsCpf ? "require_cpf_cnpj" : needsApproval ? "require_asaas_approval" : null,
+        },
         { status: 502 },
       );
     }
