@@ -145,7 +145,13 @@ export async function POST(request: Request) {
 
     const partnerWalletId = partner?.asaas_wallet_id ? String(partner.asaas_wallet_id).trim() : "";
     if (!partnerWalletId) {
-      return NextResponse.json({ error: "Parceiro ainda não está habilitado para Pix (Split)." }, { status: 409 });
+      return NextResponse.json(
+        {
+          error:
+            "Parceiro ainda não está habilitado para Pix (Split). Abra /partner/stripe/setup e conclua o cadastro do parceiro para gerar a subconta Asaas.",
+        },
+        { status: 409 },
+      );
     }
 
     const platformFeeCents = calculatePlatformFeeCents(totalCents);

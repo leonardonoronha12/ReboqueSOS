@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     const supabaseAdmin = createSupabaseAdminClient();
     const { data: partner, error: partnerErr } = await supabaseAdmin
       .from("tow_partners")
-      .select("stripe_account_id,asaas_wallet_id")
+      .select("stripe_account_id,asaas_wallet_id,asaas_account_id")
       .eq("id", user.id)
       .maybeSingle();
     if (partnerErr) return NextResponse.json({ error: partnerErr.message }, { status: 500 });
@@ -179,8 +179,10 @@ export async function POST(request: Request) {
 
     const existingBusinessType = (existingAccount as { business_type?: string | null })?.business_type ?? null;
     if (accountId && existingBusinessType && existingBusinessType !== "individual") {
-      accountId = null;
-      existingAccount = null;
+      return NextResponse.json(
+        { error: "Esta conta Stripe já está cadastrada com outro tipo de negócio. Fale com o suporte para ajustar." },
+        { status: 409 },
+      );
     }
 
     const existingVerificationStatus =
@@ -192,8 +194,61 @@ export async function POST(request: Request) {
     );
 
     if (accountId && isVerified && existingIdNumber && existingIdNumber !== cpf) {
-      accountId = null;
-      existingAccount = null;
+      return NextResponse.json(
+        {
+          error:
+            "CPF diferente do cadastrado/verificado no Stripe. Não é possível alterar CPF após verificação. Verifique o CPF informado ou entre em contato com o suporte.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (!partner?.asaas_wallet_id && getAsaasApiKey()) {
+      const birthDate = `${dobYear}-${pad2(dobMonth)}-${pad2(dobDay)}`;
+      const addressNumber = extractAddressNumber(line1);
+
+      const createRes = await asaasFetch<{ id?: string; walletId?: string; apiKey?: string; errors?: unknown }>(
+        "/v3/accounts",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: fullName,
+            email,
+            cpfCnpj: cpf,
+            birthDate,
+            phone: phone,
+            mobilePhone: phone,
+            address: line1,
+            addressNumber,
+            complement: line2 || undefined,
+            province: "Centro",
+            postalCode: postal,
+            incomeValue: Number(incomeValue.toFixed(2)),
+          }),
+        },
+      );
+
+      if (!createRes.ok || !createRes.json?.walletId) {
+        return NextResponse.json(
+          {
+            error: "Não foi possível habilitar Pix (Split) no Asaas para este parceiro.",
+            details: createRes.json ?? createRes.text,
+          },
+          { status: 502 },
+        );
+      }
+
+      const { error: upErr } = await supabaseAdmin
+        .from("tow_partners")
+        .update({
+          asaas_account_id: createRes.json.id ? String(createRes.json.id) : (partner?.asaas_account_id ? String(partner.asaas_account_id) : null),
+          asaas_wallet_id: String(createRes.json.walletId),
+          asaas_api_key: createRes.json.apiKey ? String(createRes.json.apiKey) : null,
+          asaas_income_value: Number(incomeValue.toFixed(2)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
 
     if (!accountId) {
@@ -261,42 +316,6 @@ export async function POST(request: Request) {
       external_account: bankTok.id,
       default_for_currency: true,
     });
-
-    if (!partner?.asaas_wallet_id && getAsaasApiKey()) {
-      const birthDate = `${dobYear}-${pad2(dobMonth)}-${pad2(dobDay)}`;
-      const addressNumber = extractAddressNumber(line1);
-
-      const createRes = await asaasFetch<{ id?: string; walletId?: string; apiKey?: string }>("/v3/accounts", {
-        method: "POST",
-        body: JSON.stringify({
-          name: fullName,
-          email,
-          cpfCnpj: cpf,
-          birthDate,
-          phone: phone,
-          mobilePhone: phone,
-          address: line1,
-          addressNumber,
-          complement: line2 || undefined,
-          province: "Centro",
-          postalCode: postal,
-          incomeValue: Number(incomeValue.toFixed(2)),
-        }),
-      });
-
-      if (createRes.ok && createRes.json?.walletId) {
-        await supabaseAdmin
-          .from("tow_partners")
-          .update({
-            asaas_account_id: createRes.json.id ? String(createRes.json.id) : null,
-            asaas_wallet_id: String(createRes.json.walletId),
-            asaas_api_key: createRes.json.apiKey ? String(createRes.json.apiKey) : null,
-            asaas_income_value: Number(incomeValue.toFixed(2)),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id);
-      }
-    }
 
     return NextResponse.json({ ok: true, account_id: accountId }, { status: 200 });
   } catch (e) {
