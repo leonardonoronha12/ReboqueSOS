@@ -23,6 +23,7 @@ type SubmitResponse = {
   ok?: boolean;
   account_id?: string;
   error?: string;
+  details?: unknown;
 };
 
 function digitsOnly(value: string) {
@@ -155,7 +156,19 @@ export function StripeCustomOnboardingClient(props: {
         }),
       });
       const json = (await res.json()) as SubmitResponse;
-      if (!res.ok) throw new Error(json.error || "Falha ao enviar dados.");
+      if (!res.ok) {
+        const detailsText = (() => {
+          const d = json?.details;
+          if (!d) return "";
+          if (typeof d === "string") return d;
+          try {
+            return JSON.stringify(d);
+          } catch {
+            return "";
+          }
+        })();
+        throw new Error(`${json.error || "Falha ao enviar dados."}${detailsText ? ` (${detailsText})` : ""}`);
+      }
       setMessage("Dados enviados. Verificando status...");
       await loadStatus();
     } catch (e) {

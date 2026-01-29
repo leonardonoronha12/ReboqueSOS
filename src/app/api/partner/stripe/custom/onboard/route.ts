@@ -78,6 +78,16 @@ async function asaasFetch<T>(path: string, init?: RequestInit) {
   return { ok: res.ok, status: res.status, json, text };
 }
 
+function extractAsaasErrorMessage(input: unknown) {
+  const errors = (input as { errors?: Array<{ description?: unknown }> } | null)?.errors;
+  const list = Array.isArray(errors) ? errors : [];
+  const descriptions = list
+    .map((e) => (typeof e?.description === "string" ? e.description.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 6);
+  return descriptions.length ? descriptions.join(" • ") : null;
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -229,9 +239,10 @@ export async function POST(request: Request) {
       );
 
       if (!createRes.ok || !createRes.json?.walletId) {
+        const asaasMsg = extractAsaasErrorMessage(createRes.json) || (createRes.text ? String(createRes.text).slice(0, 500) : null);
         return NextResponse.json(
           {
-            error: "Não foi possível habilitar Pix (Split) no Asaas para este parceiro.",
+            error: `Não foi possível habilitar Pix (Split) no Asaas para este parceiro.${asaasMsg ? ` ${asaasMsg}` : ""}`,
             details: createRes.json ?? createRes.text,
           },
           { status: 502 },
