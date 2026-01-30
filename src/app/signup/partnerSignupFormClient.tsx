@@ -631,6 +631,13 @@ export function PartnerSignupFormClient(props: { cidades: string[]; initialError
           </div>
         </div>
 
+        <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-4">
+          <div className="text-sm font-extrabold text-brand-black">Pagamentos</div>
+          <div className="mt-1 text-xs text-brand-black/70">
+            Depois de criar sua conta, você será levado para configurar recebimentos (Pix e cartão).
+          </div>
+        </div>
+
         <button
           className="btn-primary w-full disabled:opacity-50"
           type="submit"
