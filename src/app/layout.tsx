@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body
-        className={`${montserrat.variable} ${geistMono.variable} min-h-dvh bg-brand-white text-brand-black font-sans antialiased`}
+        className={`${montserrat.variable} ${geistMono.variable} min-h-dvh overflow-x-hidden bg-brand-white text-brand-black font-sans antialiased`}
       >
         <AppHeader />
         <ClientActiveTripRedirector />
