@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth/requireUser";
 import { getOptionalEnv } from "@/lib/env";
 import { haversineKm } from "@/lib/geo";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isTowRequestExpired } from "@/lib/towRequestExpiry";
 
 type Coords = { lat: number; lng: number };
 
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
 
   const { data: reqRow, error: reqErr } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,status,lat,lng")
+    .select("id,status,lat,lng,created_at,accepted_proposal_id")
     .eq("id", requestId)
     .maybeSingle();
 
@@ -86,6 +87,16 @@ export async function POST(request: Request) {
 
   if (reqRow.status !== "PENDENTE" && reqRow.status !== "PROPOSTA_RECEBIDA") {
     return NextResponse.json({ error: "Pedido não está aceitando propostas." }, { status: 409 });
+  }
+
+  if (
+    isTowRequestExpired({
+      createdAt: String((reqRow as { created_at?: unknown } | null)?.created_at ?? ""),
+      status: String((reqRow as { status?: unknown } | null)?.status ?? ""),
+      acceptedProposalId: (reqRow as { accepted_proposal_id?: string | null } | null)?.accepted_proposal_id ?? null,
+    })
+  ) {
+    return NextResponse.json({ error: "Pedido expirado (3 min). O cliente deve solicitar novamente." }, { status: 409 });
   }
 
   const pickup = (() => {

@@ -36,6 +36,7 @@ export default async function PartnerDashboardPage() {
     .select("id,local_cliente,cidade,status,created_at,lat,lng,cliente_nome,telefone_cliente,modelo_veiculo")
     .eq("cidade", cidade)
     .in("status", ["PENDENTE", "PROPOSTA_RECEBIDA"])
+    .is("accepted_proposal_id", null)
     .order("created_at", { ascending: false })
     .limit(20);
 

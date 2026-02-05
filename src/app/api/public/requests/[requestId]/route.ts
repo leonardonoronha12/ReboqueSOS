@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getTowRequestExpiresAtMs, isTowRequestExpired } from "@/lib/towRequestExpiry";
 
 type PartnerRow = {
   id: string;
@@ -23,6 +24,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ req
     .maybeSingle();
 
   if (!requestRow) return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
+
+  const expiresAtMs = getTowRequestExpiresAtMs(String((requestRow as { created_at?: unknown } | null)?.created_at ?? ""));
+  const expired = isTowRequestExpired({
+    createdAt: String((requestRow as { created_at?: unknown } | null)?.created_at ?? ""),
+    status: String((requestRow as { status?: unknown } | null)?.status ?? ""),
+    acceptedProposalId: (requestRow as { accepted_proposal_id?: string | null } | null)?.accepted_proposal_id ?? null,
+  });
 
   const { data: proposals } = await supabaseAdmin
     .from("tow_proposals")
@@ -71,5 +79,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ req
     .eq("request_id", requestId)
     .maybeSingle();
 
-  return NextResponse.json({ request: requestRow, proposals: proposalsWithPartner, trip: trip ?? null }, { status: 200 });
+  return NextResponse.json(
+    {
+      request: { ...requestRow, expires_at: expiresAtMs ? new Date(expiresAtMs).toISOString() : null, expired },
+      proposals: proposalsWithPartner,
+      trip: trip ?? null,
+    },
+    { status: 200 },
+  );
 }

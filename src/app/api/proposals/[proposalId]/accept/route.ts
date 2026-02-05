@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getUserProfile } from "@/lib/auth/getProfile";
 import { requireUser } from "@/lib/auth/requireUser";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isTowRequestExpired } from "@/lib/towRequestExpiry";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/sendWhatsApp";
 
 export async function POST(
@@ -24,7 +25,7 @@ export async function POST(
 
   const { data: reqRow, error: reqErr } = await supabaseAdmin
     .from("tow_requests")
-    .select("id,cliente_id,status,local_cliente,cidade,telefone_cliente,modelo_veiculo")
+    .select("id,cliente_id,status,local_cliente,cidade,telefone_cliente,modelo_veiculo,accepted_proposal_id,created_at")
     .eq("id", proposal.request_id)
     .maybeSingle();
 
@@ -43,6 +44,24 @@ export async function POST(
   })();
 
   if (!canAccept) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+
+  if (reqRow.status !== "PENDENTE" && reqRow.status !== "PROPOSTA_RECEBIDA" && reqRow.status !== "ACEITO" && reqRow.status !== "A_CAMINHO") {
+    return NextResponse.json({ error: "Pedido não está aceitando propostas." }, { status: 409 });
+  }
+
+  if (
+    isTowRequestExpired({
+      createdAt: String((reqRow as { created_at?: unknown } | null)?.created_at ?? ""),
+      status: String((reqRow as { status?: unknown } | null)?.status ?? ""),
+      acceptedProposalId: (reqRow as { accepted_proposal_id?: string | null } | null)?.accepted_proposal_id ?? null,
+    })
+  ) {
+    return NextResponse.json({ error: "Pedido expirado (3 min). O cliente deve solicitar novamente." }, { status: 409 });
+  }
+
+  if ((reqRow as { accepted_proposal_id?: string | null } | null)?.accepted_proposal_id) {
+    return NextResponse.json({ error: "Este pedido já teve uma proposta aceita." }, { status: 409 });
+  }
 
   if (reqRow.status === "ACEITO" || reqRow.status === "A_CAMINHO") {
     const { data: existingTrip } = await supabaseAdmin

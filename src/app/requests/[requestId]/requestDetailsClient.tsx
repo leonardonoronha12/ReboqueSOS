@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Modal } from "@/components/ui/Modal";
+import { getTowRequestExpiresAtMs } from "@/lib/towRequestExpiry";
 
 type RequestRow = {
   id: string;
@@ -130,10 +131,12 @@ export function RequestDetailsClient(props: {
   const [error, setError] = useState<string | null>(null);
   const [proposalModalOpen, setProposalModalOpen] = useState(false);
   const [proposalModalId, setProposalModalId] = useState<string | null>(null);
+  const [isCanceling, setIsCanceling] = useState(false);
   const lastNotifiedIdRef = useRef<string | null>(null);
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => new Set());
   const alarmIntervalRef = useRef<number | null>(null);
   const alarmTicksRef = useRef(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     try {
@@ -186,9 +189,40 @@ export function RequestDetailsClient(props: {
     };
   }, [props.requestId]);
 
+  const expiresAtMs = useMemo(() => getTowRequestExpiresAtMs(requestRow.created_at), [requestRow.created_at]);
+  const isExpired = useMemo(() => {
+    const status = String(requestRow.status ?? "");
+    if (trip) return false;
+    if (accepted) return false;
+    if (requestRow.accepted_proposal_id) return false;
+    if (status !== "PENDENTE" && status !== "PROPOSTA_RECEBIDA") return false;
+    if (expiresAtMs == null) return false;
+    return nowMs > expiresAtMs;
+  }, [accepted, expiresAtMs, nowMs, requestRow.accepted_proposal_id, requestRow.status, trip]);
+
+  useEffect(() => {
+    const status = String(requestRow.status ?? "");
+    const shouldTick =
+      !trip &&
+      !accepted &&
+      !requestRow.accepted_proposal_id &&
+      (status === "PENDENTE" || status === "PROPOSTA_RECEBIDA") &&
+      expiresAtMs != null;
+    if (!shouldTick) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [accepted, expiresAtMs, requestRow.accepted_proposal_id, requestRow.status, trip]);
+
+  useEffect(() => {
+    if (!isExpired) return;
+    setProposalModalOpen(false);
+    setProposalModalId(null);
+  }, [isExpired]);
+
   useEffect(() => {
     if (!newestProposal) return;
     if (accepted) return;
+    if (isExpired) return;
     const id = newestProposal.id;
     if (!id) return;
     if (lastNotifiedIdRef.current === id) return;
@@ -197,7 +231,7 @@ export function RequestDetailsClient(props: {
     setProposalModalOpen(true);
     tryVibrate();
     void playAlarmToneOnce();
-  }, [accepted, newestProposal]);
+  }, [accepted, isExpired, newestProposal]);
 
   useEffect(() => {
     const shouldAlarm = proposalModalOpen && !!modalProposal && !accepted;
@@ -241,6 +275,10 @@ export function RequestDetailsClient(props: {
   }
 
   async function acceptProposal(proposalId: string) {
+    if (isExpired) {
+      setError("Pedido expirado (3 min). Solicite novamente.");
+      return;
+    }
     setIsAccepting(proposalId);
     setError(null);
     try {
@@ -260,12 +298,48 @@ export function RequestDetailsClient(props: {
     const status = String(requestRow.status ?? "");
     if (trip) return false;
     if (accepted) return false;
+    if (isExpired) return false;
     if (visibleProposals.length > 0) return false;
+    return status === "PENDENTE" || status === "PROPOSTA_RECEBIDA";
+  })();
+
+  const canCancelRequest = (() => {
+    const status = String(requestRow.status ?? "");
+    if (trip) return false;
+    if (accepted) return false;
+    if (isExpired) return false;
+    if (requestRow.accepted_proposal_id) return false;
     return status === "PENDENTE" || status === "PROPOSTA_RECEBIDA";
   })();
 
   return (
     <div className="space-y-6">
+      {isExpired ? (
+        <div className="fixed inset-0 z-40 grid place-items-center p-6">
+          <div className="w-full max-w-md rounded-3xl border border-brand-border/20 bg-white p-5 shadow-soft">
+            <div className="text-center text-sm font-extrabold text-brand-black">Tempo esgotado</div>
+            <div className="mt-2 text-center text-xs font-semibold text-brand-black/60">
+              Nenhum reboque aceitou em 3 minutos. Faça um novo pedido.
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <button
+                className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white"
+                type="button"
+                onClick={() => router.push("/")}
+              >
+                Solicitar novamente
+              </button>
+              <button
+                className="rounded-md border px-4 py-2 text-sm font-semibold"
+                type="button"
+                onClick={() => router.push("/")}
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {isSearchingPartners ? (
         <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center p-6">
           <div className="rounded-3xl border border-brand-border/20 bg-white/95 p-5 shadow-soft backdrop-blur">
@@ -377,6 +451,32 @@ export function RequestDetailsClient(props: {
               Pagar
             </a>
           </div>
+        ) : canCancelRequest ? (
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+              type="button"
+              disabled={isCanceling}
+              onClick={async () => {
+                setError(null);
+                const ok = window.confirm("Cancelar este pedido?");
+                if (!ok) return;
+                setIsCanceling(true);
+                try {
+                  const res = await fetch(`/api/requests/${encodeURIComponent(requestRow.id)}/cancel`, { method: "POST" });
+                  const json = (await res.json().catch(() => null)) as { error?: string } | null;
+                  if (!res.ok) throw new Error(json?.error || "Não foi possível cancelar agora.");
+                  router.push("/");
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Não foi possível cancelar agora.");
+                } finally {
+                  setIsCanceling(false);
+                }
+              }}
+            >
+              {isCanceling ? "Cancelando..." : "Cancelar pedido"}
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -392,7 +492,11 @@ export function RequestDetailsClient(props: {
           </div>
         ) : null}
 
-        {proposals.length === 0 ? (
+        {isExpired ? (
+          <div className="mt-4 rounded-md border bg-zinc-50 p-4 text-sm text-zinc-700">
+            Pedido expirado. Para chamar de novo, faça uma nova solicitação.
+          </div>
+        ) : proposals.length === 0 ? (
           <div className="mt-4 rounded-md border bg-zinc-50 p-4 text-sm text-zinc-700">
             Nenhuma proposta ainda.
           </div>
@@ -417,7 +521,7 @@ export function RequestDetailsClient(props: {
                   ) : (
                     <button
                       className="rounded-md bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                      disabled={!!accepted || isAccepting === p.id}
+                      disabled={!!accepted || isAccepting === p.id || isExpired}
                       onClick={() => acceptProposal(p.id)}
                     >
                       {isAccepting === p.id ? "Aceitando..." : "Aceitar"}

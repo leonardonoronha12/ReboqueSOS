@@ -637,16 +637,14 @@ export function PartnerDashboardClient(props: {
           }))
           .filter((r) => r.id && r.local_cliente);
 
-        if (normalized.length) {
-          setRequests(normalized);
-          const newest = normalized[0];
-          if (newest && !seenRequestIdsRef.current.has(newest.id)) {
-            seenRequestIdsRef.current.add(newest.id);
-            setAlertRequest(newest);
-            setAlertOpen(true);
-            tryAlertVibrate();
-            void playLongAlert();
-          }
+        setRequests(normalized);
+        const newest = normalized[0];
+        if (newest && !seenRequestIdsRef.current.has(newest.id)) {
+          seenRequestIdsRef.current.add(newest.id);
+          setAlertRequest(newest);
+          setAlertOpen(true);
+          tryAlertVibrate();
+          void playLongAlert();
         }
       } catch {
         return;

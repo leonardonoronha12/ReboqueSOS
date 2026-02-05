@@ -6,6 +6,7 @@ import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 
 import { Modal } from "@/components/ui/Modal";
 import { Sheet } from "@/components/ui/Sheet";
+import { getTowRequestExpiresAtMs } from "@/lib/towRequestExpiry";
 
 type Coords = { lat: number; lng: number };
 type CoordsSource = "gps" | "address" | null;
@@ -132,6 +133,7 @@ export function RequestForm() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
+  const [searchNowMs, setSearchNowMs] = useState(() => Date.now());
 
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [locationModalCoords, setLocationModalCoords] = useState<Coords | null>(null);
@@ -726,10 +728,51 @@ export function RequestForm() {
     }
   }
 
+  const acceptedProposal = useMemo(() => activeProposals.find((p) => p.accepted) ?? null, [activeProposals]);
+  const acceptedPartner = acceptedProposal?.partner ?? null;
+
+  const searchExpiresAtMs = useMemo(() => getTowRequestExpiresAtMs(activeRequest?.created_at), [activeRequest?.created_at]);
+  const isSearchExpired = useMemo(() => {
+    const status = String(activeRequest?.status ?? "");
+    if (!isSearchModalOpen) return false;
+    if (!activeRequestId) return false;
+    if (activeTrip) return false;
+    if (acceptedPartner) return false;
+    if (activeRequest?.accepted_proposal_id) return false;
+    if (status !== "PENDENTE" && status !== "PROPOSTA_RECEBIDA") return false;
+    if (searchExpiresAtMs == null) return false;
+    return searchNowMs > searchExpiresAtMs;
+  }, [
+    acceptedPartner,
+    activeRequest?.accepted_proposal_id,
+    activeRequest?.status,
+    activeRequestId,
+    activeTrip,
+    isSearchModalOpen,
+    searchExpiresAtMs,
+    searchNowMs,
+  ]);
+
+  const searchRemainingSeconds = useMemo(() => {
+    if (!isSearchModalOpen) return null;
+    if (searchExpiresAtMs == null) return null;
+    return Math.max(0, Math.ceil((searchExpiresAtMs - searchNowMs) / 1000));
+  }, [isSearchModalOpen, searchExpiresAtMs, searchNowMs]);
+
+  function resetActiveSearch() {
+    setActiveRequestId(null);
+    setActiveRequest(null);
+    setActiveProposals([]);
+    setActiveTrip(null);
+    setSearchError(null);
+    setIsAcceptingProposal(null);
+  }
+
   useEffect(() => {
     const requestId = activeRequestId;
     if (!requestId) return;
     if (!isSearchModalOpen) return;
+    if (isSearchExpired) return;
     let alive = true;
 
     async function refresh() {
@@ -752,10 +795,14 @@ export function RequestForm() {
       alive = false;
       window.clearInterval(id);
     };
-  }, [activeRequestId, isSearchModalOpen]);
+  }, [activeRequestId, isSearchExpired, isSearchModalOpen]);
 
   async function acceptProposalFromModal(proposalId: string) {
     if (isAcceptingProposal) return;
+    if (isSearchExpired) {
+      setSearchError("Pedido expirado (3 min). Solicite novamente.");
+      return;
+    }
     setIsAcceptingProposal(proposalId);
     setSearchError(null);
     try {
@@ -770,11 +817,16 @@ export function RequestForm() {
     }
   }
 
+  useEffect(() => {
+    const shouldTick =
+      isSearchModalOpen && !!activeRequestId && !activeTrip && !acceptedPartner && !isSearchExpired && searchExpiresAtMs != null;
+    if (!shouldTick) return;
+    const id = window.setInterval(() => setSearchNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [acceptedPartner, activeRequestId, activeTrip, isSearchExpired, isSearchModalOpen, searchExpiresAtMs]);
+
   const label =
     geoStatus === "loading" ? "…" : geoStatus === "error" ? "—" : coords ? String(nearbyCount ?? 0) : "—";
-
-  const acceptedProposal = useMemo(() => activeProposals.find((p) => p.accepted) ?? null, [activeProposals]);
-  const acceptedPartner = acceptedProposal?.partner ?? null;
 
   useEffect(() => {
     const query = endereco.trim();
@@ -987,8 +1039,11 @@ export function RequestForm() {
 
       <Modal
         open={isSearchModalOpen}
-        title={acceptedPartner ? "Reboque confirmado" : "Buscando reboques parceiros"}
-        onClose={() => setIsSearchModalOpen(false)}
+        title={acceptedPartner ? "Reboque confirmado" : isSearchExpired ? "Pedido expirado" : "Buscando reboques parceiros"}
+        onClose={() => {
+          setIsSearchModalOpen(false);
+          if (isSearchExpired) resetActiveSearch();
+        }}
         footer={
           acceptedPartner && activeRequestId ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1001,12 +1056,57 @@ export function RequestForm() {
                 Ir para pagamento
               </a>
             </div>
+          ) : isSearchExpired ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                className="btn-primary w-full sm:w-auto"
+                type="button"
+                onClick={() => {
+                  setIsSearchModalOpen(false);
+                  resetActiveSearch();
+                }}
+              >
+                Chamar novamente
+              </button>
+              <button
+                className="btn-secondary w-full sm:w-auto"
+                type="button"
+                onClick={() => {
+                  setIsSearchModalOpen(false);
+                  resetActiveSearch();
+                }}
+              >
+                Fechar
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               {activeRequestId ? (
                 <a className="btn-secondary w-full sm:w-auto" href={`/requests/${activeRequestId}`}>
                   Abrir detalhes
                 </a>
+              ) : null}
+              {activeRequestId && activeRequest ? (
+                <button
+                  className="btn-secondary w-full sm:w-auto"
+                  type="button"
+                  onClick={async () => {
+                    setSearchError(null);
+                    const ok = window.confirm("Cancelar este pedido?");
+                    if (!ok) return;
+                    try {
+                      const res = await fetch(`/api/requests/${encodeURIComponent(activeRequestId)}/cancel`, { method: "POST" });
+                      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+                      if (!res.ok) throw new Error(json?.error || "Não foi possível cancelar agora.");
+                      setIsSearchModalOpen(false);
+                      resetActiveSearch();
+                    } catch (e) {
+                      setSearchError(e instanceof Error ? e.message : "Não foi possível cancelar agora.");
+                    }
+                  }}
+                >
+                  Cancelar
+                </button>
               ) : null}
               <button className="btn-primary w-full sm:w-auto" type="button" onClick={() => setIsSearchModalOpen(false)}>
                 Fechar
@@ -1022,6 +1122,12 @@ export function RequestForm() {
             </div>
           ) : null}
 
+          {isSearchExpired ? (
+            <div className="rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+              Tempo esgotado (3 min). Nenhum reboque aceitou. Faça um novo pedido.
+            </div>
+          ) : null}
+
           {activeRequest ? (
             <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
               <div className="font-semibold text-brand-black">Pedido {activeRequest.id.slice(0, 8)}</div>
@@ -1030,6 +1136,9 @@ export function RequestForm() {
               </div>
               {activeRequest.destino_local ? (
                 <div className="mt-1 text-xs text-brand-black/70">Destino: {activeRequest.destino_local}</div>
+              ) : null}
+              {!acceptedPartner && !activeTrip && !isSearchExpired && searchRemainingSeconds != null ? (
+                <div className="mt-2 text-xs font-semibold text-brand-black/70">Expira em {searchRemainingSeconds}s</div>
               ) : null}
             </div>
           ) : (
@@ -1053,6 +1162,11 @@ export function RequestForm() {
                 ) : null}
               </div>
             </div>
+          ) : isSearchExpired ? (
+            <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
+              <div className="text-sm font-bold text-brand-black">Pedido expirado</div>
+              <div className="mt-1 text-xs text-brand-black/70">Para chamar de novo, feche e solicite novamente.</div>
+            </div>
           ) : activeProposals.length ? (
             <div className="space-y-2">
               <div className="text-sm font-bold text-brand-black">Propostas recebidas</div>
@@ -1072,7 +1186,7 @@ export function RequestForm() {
                       <button
                         className="btn-primary shrink-0 disabled:opacity-50"
                         type="button"
-                        disabled={Boolean(isAcceptingProposal)}
+                        disabled={Boolean(isAcceptingProposal) || isSearchExpired}
                         onClick={() => void acceptProposalFromModal(p.id)}
                       >
                         {isAcceptingProposal === p.id ? "Aceitando..." : "Aceitar"}
