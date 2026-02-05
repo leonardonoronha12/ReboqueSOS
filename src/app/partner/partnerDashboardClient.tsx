@@ -419,6 +419,7 @@ export function PartnerDashboardClient(props: {
   trips: TripRow[];
 }) {
   const displayName = props.partner?.empresa_nome ?? props.profile.nome;
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const [ativo, setAtivo] = useState(Boolean(props.partner?.ativo));
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -458,6 +459,46 @@ export function PartnerDashboardClient(props: {
     setSoundReady(ok);
     if (ok) startAlertToneLong();
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        const anyNav = navigator as unknown as { wakeLock?: { request?: (type: "screen") => Promise<{ release: () => Promise<void> }> } };
+        if (!anyNav?.wakeLock?.request) return;
+        if (wakeLockRef.current) {
+          await wakeLockRef.current.release().catch(() => null);
+          wakeLockRef.current = null;
+        }
+        const sentinel = await anyNav.wakeLock.request("screen");
+        if (cancelled) {
+          await sentinel.release().catch(() => null);
+          return;
+        }
+        wakeLockRef.current = sentinel;
+      } catch {
+        return;
+      }
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") void acquire();
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    void acquire();
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      if (wakeLockRef.current) {
+        void wakeLockRef.current.release().catch(() => null);
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setRequests(props.requests);
