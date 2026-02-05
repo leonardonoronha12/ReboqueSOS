@@ -13,6 +13,8 @@ type Proposal = {
   created_at: string;
 };
 
+type Coords = { lat: number; lng: number };
+
 export function ProposalFormClient(props: {
   requestId: string;
   initialProposal: Proposal | null;
@@ -21,12 +23,11 @@ export function ProposalFormClient(props: {
 }) {
   const router = useRouter();
   const [valor, setValor] = useState(String(props.initialProposal?.valor ?? ""));
-  const [etaMinutes, setEtaMinutes] = useState(
-    String(props.initialProposal?.eta_minutes ?? ""),
-  );
   const [proposal, setProposal] = useState<Proposal | null>(props.initialProposal);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [myCoords, setMyCoords] = useState<Coords | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!props.supabaseUrl || !props.supabaseAnonKey) return;
@@ -76,20 +77,29 @@ export function ProposalFormClient(props: {
     };
   }, [props.requestId]);
 
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setMyCoords({ lat, lng });
+      },
+      () => {
+        setGeoError("Ative o GPS para calcular o tempo estimado automaticamente.");
+      },
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 },
+    );
+  }, []);
+
   async function submit() {
     setIsSubmitting(true);
     setError(null);
     try {
       const valorNum = Number(valor);
-      const etaNum = Number(etaMinutes);
       if (!Number.isFinite(valorNum) || valorNum <= 0) {
         throw new Error("Informe um valor maior que zero.");
-      }
-      if (!Number.isFinite(etaNum) || etaNum <= 0) {
-        throw new Error("Informe um ETA (min) maior que zero.");
-      }
-      if (!Number.isInteger(etaNum)) {
-        throw new Error("ETA (min) deve ser um número inteiro.");
       }
 
       const res = await fetch("/api/proposals", {
@@ -98,18 +108,19 @@ export function ProposalFormClient(props: {
         body: JSON.stringify({
           requestId: props.requestId,
           valor: valorNum,
-          etaMinutes: etaNum,
+          partnerLat: myCoords?.lat ?? null,
+          partnerLng: myCoords?.lng ?? null,
         }),
       });
       const json = (await res.json()) as { id?: string; error?: string };
       if (!res.ok) throw new Error(json.error || "Falha ao enviar proposta.");
       setProposal(
         proposal
-          ? { ...proposal, valor: valorNum, eta_minutes: etaNum }
+          ? { ...proposal, valor: valorNum }
           : {
               id: json.id!,
               valor: valorNum,
-              eta_minutes: etaNum,
+              eta_minutes: 0,
               accepted: false,
               created_at: new Date().toISOString(),
             },
@@ -126,7 +137,7 @@ export function ProposalFormClient(props: {
     <div className="rounded-xl border bg-white p-6">
       <h2 className="text-lg font-semibold">Enviar proposta</h2>
       <p className="mt-1 text-sm text-zinc-700">
-        Informe o valor e o ETA. Se o cliente aceitar, a corrida aparece em “Minhas corridas”.
+        Informe apenas o valor. O tempo estimado é calculado automaticamente pelo trajeto no mapa.
       </p>
 
       {proposal?.accepted ? (
@@ -141,7 +152,11 @@ export function ProposalFormClient(props: {
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      {geoError ? (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{geoError}</div>
+      ) : null}
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-1">
         <label className="space-y-1">
           <div className="text-sm font-medium">Valor (R$)</div>
           <input
@@ -150,18 +165,6 @@ export function ProposalFormClient(props: {
             onChange={(e) => setValor(e.target.value)}
             inputMode="decimal"
             placeholder="200.00"
-          />
-        </label>
-        <label className="space-y-1">
-          <div className="text-sm font-medium">ETA (min)</div>
-          <input
-            className="w-full rounded-md border px-3 py-2"
-            value={etaMinutes}
-            onChange={(e) => setEtaMinutes(e.target.value)}
-            inputMode="numeric"
-            min={1}
-            step={1}
-            placeholder="20"
           />
         </label>
       </div>

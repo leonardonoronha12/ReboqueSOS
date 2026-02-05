@@ -91,6 +91,23 @@ function extractAsaasErrorMessage(input: unknown) {
   return descriptions.length ? descriptions.join(" • ") : null;
 }
 
+function extractAsaasErrorCodes(input: unknown) {
+  const errors = (input as { errors?: Array<{ code?: unknown }> } | null)?.errors;
+  const list = Array.isArray(errors) ? errors : [];
+  return list
+    .map((e) => (typeof e?.code === "string" ? e.code.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function formatAsaasEnvironmentHint() {
+  const envRaw = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV) : "";
+  const env = envRaw.trim().toLowerCase();
+  const base = getAsaasBaseUrl();
+  const envLabel = env ? env : "produção (default)";
+  return `Ambiente atual: ${envLabel} • Base URL: ${base}.`;
+}
+
 function getAsaasBaseUrl() {
   const env = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV).toLowerCase() : "";
   if (process.env.ASAAS_BASE_URL) return String(process.env.ASAAS_BASE_URL);
@@ -253,8 +270,16 @@ export async function POST(request: Request) {
     });
     if (!customerRes.ok || !customerRes.json?.id) {
       const asaasMsg = extractAsaasErrorMessage(customerRes.json) || (customerRes.text ? String(customerRes.text).slice(0, 500) : null);
+      const codes = extractAsaasErrorCodes(customerRes.json);
+      const envMismatch =
+        codes.includes("invalid_environment") ||
+        (asaasMsg ? /não pertence a este ambiente/i.test(asaasMsg) : false) ||
+        (asaasMsg ? /invalid_environment/i.test(asaasMsg) : false);
+      const friendly = envMismatch
+        ? `Configuração Asaas incompatível (chave e ambiente não batem). ${formatAsaasEnvironmentHint()}`
+        : null;
       return NextResponse.json(
-        { error: `Falha ao criar cliente Pix.${asaasMsg ? ` ${asaasMsg}` : ""}`, details: customerRes.json ?? customerRes.text },
+        { error: `${friendly ?? "Falha ao criar cliente Pix."}${asaasMsg ? ` ${asaasMsg}` : ""}`, details: customerRes.json ?? customerRes.text },
         { status: 502 },
       );
     }
@@ -266,7 +291,7 @@ export async function POST(request: Request) {
         billingType: "PIX",
         value: Number((totalCents / 100).toFixed(2)),
         dueDate: todayIso(),
-        description: `ReboqueSOS - Pedido ${requestId.slice(0, 8)}`,
+        description: `ReboqueSOS • Pedido ${requestId.slice(0, 8)}`,
         externalReference: requestId,
         splits: [{ walletId: partnerWalletId, percentualValue: partnerPercent }],
       }),

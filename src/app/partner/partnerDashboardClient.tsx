@@ -53,10 +53,25 @@ function StatusPill(props: { label: string; tone?: "yellow" | "red" | "green" | 
           : "border-brand-border/30 bg-white text-brand-black/70";
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${cls}`}>
+    <span
+      className={`inline-flex max-w-full self-start items-center rounded-full border px-3 py-1 text-center text-xs font-semibold leading-tight break-all ${cls}`}
+    >
       {props.label}
     </span>
   );
+}
+
+function statusLabel(value: string) {
+  const v = String(value ?? "").trim();
+  if (!v) return "—";
+  const norm = v.toUpperCase();
+  if (norm === "PENDENTE") return "Pendente";
+  if (norm === "PROPOSTA_RECEBIDA") return "Proposta recebida";
+  if (norm === "ACEITO") return "Aceito";
+  if (norm === "PAGO") return "Pago";
+  if (norm === "CANCELADO") return "Cancelado";
+  if (v.includes("_")) return v.replace(/_/g, " ");
+  return v;
 }
 
 function formatDateTime(value: string) {
@@ -278,14 +293,14 @@ function RequestAlertModal(props: {
   if (!props.open || !req) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6">
       <button
         type="button"
-        className="absolute inset-0 bg-black/50"
+        className="fixed inset-0 bg-black/50"
         onClick={props.onClose}
         aria-label="Fechar"
       />
-      <div className="relative w-full max-w-3xl rounded-3xl border border-brand-border/20 bg-white p-5 shadow-soft">
+      <div className="relative mx-auto w-full max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl border border-brand-border/20 bg-white p-5 shadow-soft sm:max-w-3xl sm:max-h-[calc(100vh-3rem)]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="text-xs font-semibold text-brand-black/60">Nova solicitação</div>
@@ -404,7 +419,6 @@ export function PartnerDashboardClient(props: {
   trips: TripRow[];
 }) {
   const displayName = props.partner?.empresa_nome ?? props.profile.nome;
-  const mpConnected = Boolean(props.partner?.mp_user_id);
   const [ativo, setAtivo] = useState(Boolean(props.partner?.ativo));
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -703,36 +717,8 @@ export function PartnerDashboardClient(props: {
   }
 
   async function openOnboarding() {
-    window.location.href = "/partner/stripe/setup";
-  }
-
-  async function openStripeDashboard() {
     setIsCreatingLink(true);
-    setPayoutMessage(null);
-    try {
-      const res = await fetch("/api/partner/stripe/dashboard", { method: "POST" });
-      const json = await readJsonResponse<{ url?: string; error?: string }>(res);
-      if (!res.ok) throw new Error(json?.error || "Não foi possível abrir o painel.");
-      if (!json?.url) throw new Error("Resposta inválida do servidor.");
-      window.open(json.url, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      setBalanceError(e instanceof Error ? e.message : "Não foi possível abrir o painel.");
-    } finally {
-      setIsCreatingLink(false);
-    }
-  }
-
-  async function connectMercadoPago() {
-    try {
-      const res = await fetch("/api/partner/mercadopago/connect", { method: "GET" });
-      const json = (await res.json().catch(() => null)) as null | { url?: string; error?: string };
-      if (!res.ok) throw new Error(json?.error || "Não foi possível iniciar a conexão.");
-      const url = json?.url ? String(json.url) : "";
-      if (!url) throw new Error("Resposta inválida do servidor.");
-      window.location.href = url;
-    } catch (e) {
-      setBalanceError(e instanceof Error ? e.message : "Não foi possível conectar Mercado Pago.");
-    }
+    window.location.href = "/partner/stripe/setup";
   }
 
   async function payoutAll() {
@@ -849,21 +835,6 @@ export function PartnerDashboardClient(props: {
             >
               {isCreatingLink ? "Carregando..." : "Configurar conta bancária"}
             </button>
-            <button
-              type="button"
-              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10 disabled:opacity-50"
-              disabled={isCreatingLink || stripeConnected === false}
-              onClick={openStripeDashboard}
-            >
-              Abrir painel Stripe
-            </button>
-            <button
-              type="button"
-              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
-              onClick={connectMercadoPago}
-            >
-              {mpConnected ? "Mercado Pago: conectado" : "Conectar Mercado Pago (Pix)"}
-            </button>
           </div>
         </div>
 
@@ -929,14 +900,14 @@ export function PartnerDashboardClient(props: {
                   className="block rounded-2xl border border-brand-border/20 bg-white p-3 hover:bg-brand-yellow/10"
                   href={`/partner/requests/${r.id}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <div className="w-full min-w-0">
                       <div className="truncate text-sm font-bold text-brand-black">{r.local_cliente}</div>
                       <div className="mt-0.5 text-xs text-brand-text2">
                         {r.cidade} • {formatDateTime(r.created_at)}
                       </div>
                     </div>
-                    <StatusPill label={r.status} />
+                    <StatusPill label={statusLabel(r.status)} />
                   </div>
                 </a>
               ))}
@@ -964,14 +935,14 @@ export function PartnerDashboardClient(props: {
                   className="block rounded-2xl border border-brand-border/20 bg-white p-3 hover:bg-brand-yellow/10"
                   href={`/partner/trips/${t.id}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                    <div className="w-full min-w-0">
                       <div className="truncate text-sm font-bold text-brand-black">Trip #{t.id.slice(0, 8)}</div>
                       <div className="mt-0.5 text-xs text-brand-text2">
                         Pedido #{t.request_id.slice(0, 8)} • {formatDateTime(t.created_at)}
                       </div>
                     </div>
-                    <StatusPill label={t.status} />
+                    <StatusPill label={statusLabel(t.status)} />
                   </div>
                 </a>
               ))}

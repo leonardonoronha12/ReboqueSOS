@@ -18,6 +18,13 @@ export async function GET() {
   const stripeKey = process.env.STRIPE_SECRET_KEY ?? null;
   const stripeMode = stripeKey?.startsWith("sk_test_") ? "test" : stripeKey?.startsWith("sk_live_") ? "live" : null;
   const asaasEnv = process.env.ASAAS_ENV ? String(process.env.ASAAS_ENV) : null;
+  const asaasEnvNormalized = asaasEnv ? asaasEnv.toLowerCase() : null;
+  const asaasBaseUrlUsed = (() => {
+    if (process.env.ASAAS_BASE_URL) return String(process.env.ASAAS_BASE_URL);
+    if (asaasEnvNormalized === "sandbox") return "https://api-sandbox.asaas.com";
+    return "https://api.asaas.com";
+  })();
+  const asaasBaseUrlSource = process.env.ASAAS_BASE_URL ? "ASAAS_BASE_URL" : asaasEnvNormalized === "sandbox" ? "ASAAS_ENV" : "default";
 
   return NextResponse.json(
     {
@@ -53,6 +60,9 @@ export async function GET() {
         api_key_configured: pickSet("ASAAS_API_KEY"),
         webhook_token_configured: pickSet("ASAAS_WEBHOOK_TOKEN"),
         env: asaasEnv,
+        env_normalized: asaasEnvNormalized,
+        base_url_used: asaasBaseUrlUsed,
+        base_url_source: asaasBaseUrlSource,
       },
     },
     { status: 200 },

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
@@ -32,6 +31,36 @@ type GoogleLike = {
 };
 
 type Tow = { id: string; pos: Coords; target: Coords; speed: number };
+type PartnerInfo = {
+  id: string;
+  empresa_nome: string | null;
+  whatsapp_number: string | null;
+  caminhao_modelo: string | null;
+  caminhao_placa: string | null;
+  caminhao_tipo: string | null;
+  foto_parceiro_path: string | null;
+};
+type ProposalWithPartner = {
+  id: string;
+  partner_id: string;
+  valor: number;
+  eta_minutes: number;
+  accepted: boolean;
+  created_at: string;
+  partner: PartnerInfo | null;
+};
+type TripRow = { id: string; status: string };
+type RequestRow = {
+  id: string;
+  local_cliente: string;
+  cidade: string;
+  status: string;
+  accepted_proposal_id: string | null;
+  created_at: string;
+  telefone_cliente?: string | null;
+  modelo_veiculo?: string | null;
+  destino_local?: string | null;
+};
 
 async function readJsonMaybe<T>(res: Response): Promise<T | null> {
   const text = await res.text();
@@ -75,7 +104,6 @@ function randomPointAround(center: Coords, radiusDeg: number): Coords {
 }
 
 export function RequestForm() {
-  const router = useRouter();
   const [coords, setCoords] = useState<Coords | null>(null);
   const [coordsSource, setCoordsSource] = useState<CoordsSource>(null);
   const [nearbyCount, setNearbyCount] = useState<number | null>(null);
@@ -96,6 +124,14 @@ export function RequestForm() {
   const [destinoPredictions, setDestinoPredictions] = useState<AddressPrediction[]>([]);
   const [isDestinoAutocompleteOpen, setIsDestinoAutocompleteOpen] = useState(false);
   const [isLoadingDestinoAutocomplete, setIsLoadingDestinoAutocomplete] = useState(false);
+
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [activeRequest, setActiveRequest] = useState<RequestRow | null>(null);
+  const [activeProposals, setActiveProposals] = useState<ProposalWithPartner[]>([]);
+  const [activeTrip, setActiveTrip] = useState<TripRow | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isAcceptingProposal, setIsAcceptingProposal] = useState<string | null>(null);
 
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [locationModalCoords, setLocationModalCoords] = useState<Coords | null>(null);
@@ -679,7 +715,9 @@ export function RequestForm() {
       if (!res.ok) throw new Error(json?.error || `Falha ao solicitar reboque. (HTTP ${res.status})`);
       if (!json?.id) throw new Error("Resposta inválida.");
 
-      router.push(`/requests/${json.id}`);
+      setActiveRequestId(String(json.id));
+      setSearchError(null);
+      setIsSearchModalOpen(true);
     } catch (e) {
       setOpenSheet(true);
       setSheetError(e instanceof Error ? e.message : "Falha ao solicitar reboque.");
@@ -688,8 +726,55 @@ export function RequestForm() {
     }
   }
 
+  useEffect(() => {
+    const requestId = activeRequestId;
+    if (!requestId) return;
+    if (!isSearchModalOpen) return;
+    let alive = true;
+
+    async function refresh() {
+      try {
+        const res = await fetch(`/api/public/requests/${requestId}`, { method: "GET", cache: "no-store" });
+        const json = (await res.json()) as { request?: RequestRow; proposals?: ProposalWithPartner[]; trip?: TripRow | null; error?: string };
+        if (!alive) return;
+        if (!res.ok) return;
+        if (json.request) setActiveRequest(json.request);
+        setActiveProposals(Array.isArray(json.proposals) ? json.proposals : []);
+        setActiveTrip(json.trip ?? null);
+      } catch {
+        return;
+      }
+    }
+
+    void refresh();
+    const id = window.setInterval(refresh, 2500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [activeRequestId, isSearchModalOpen]);
+
+  async function acceptProposalFromModal(proposalId: string) {
+    if (isAcceptingProposal) return;
+    setIsAcceptingProposal(proposalId);
+    setSearchError(null);
+    try {
+      const res = await fetch(`/api/proposals/${encodeURIComponent(proposalId)}/accept`, { method: "POST" });
+      const json = (await res.json()) as { tripId?: string | null; error?: string };
+      if (!res.ok) throw new Error(json?.error || "Falha ao aceitar proposta.");
+      await fetch(`/api/public/requests/${encodeURIComponent(activeRequestId ?? "")}`, { method: "GET", cache: "no-store" }).catch(() => null);
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : "Falha ao aceitar proposta.");
+    } finally {
+      setIsAcceptingProposal(null);
+    }
+  }
+
   const label =
     geoStatus === "loading" ? "…" : geoStatus === "error" ? "—" : coords ? String(nearbyCount ?? 0) : "—";
+
+  const acceptedProposal = useMemo(() => activeProposals.find((p) => p.accepted) ?? null, [activeProposals]);
+  const acceptedPartner = acceptedProposal?.partner ?? null;
 
   useEffect(() => {
     const query = endereco.trim();
@@ -899,6 +984,112 @@ export function RequestForm() {
           </div>
         ) : null}
       </div>
+
+      <Modal
+        open={isSearchModalOpen}
+        title={acceptedPartner ? "Reboque confirmado" : "Buscando reboques parceiros"}
+        onClose={() => setIsSearchModalOpen(false)}
+        footer={
+          acceptedPartner && activeRequestId ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {activeTrip?.id ? (
+                <a className="btn-secondary w-full sm:w-auto" href={`/trips/${activeTrip.id}`}>
+                  Acompanhar corrida
+                </a>
+              ) : null}
+              <a className="btn-primary w-full sm:w-auto" href={`/payments/${activeRequestId}`}>
+                Ir para pagamento
+              </a>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {activeRequestId ? (
+                <a className="btn-secondary w-full sm:w-auto" href={`/requests/${activeRequestId}`}>
+                  Abrir detalhes
+                </a>
+              ) : null}
+              <button className="btn-primary w-full sm:w-auto" type="button" onClick={() => setIsSearchModalOpen(false)}>
+                Fechar
+              </button>
+            </div>
+          )
+        }
+      >
+        <div className="space-y-3">
+          {searchError ? (
+            <div className="rounded-2xl border border-brand-red/30 bg-brand-red/10 p-3 text-sm font-semibold text-brand-red">
+              {searchError}
+            </div>
+          ) : null}
+
+          {activeRequest ? (
+            <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm text-brand-black/80">
+              <div className="font-semibold text-brand-black">Pedido {activeRequest.id.slice(0, 8)}</div>
+              <div className="mt-1 text-xs text-brand-black/70">
+                {activeRequest.cidade} • {activeRequest.local_cliente}
+              </div>
+              {activeRequest.destino_local ? (
+                <div className="mt-1 text-xs text-brand-black/70">Destino: {activeRequest.destino_local}</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-brand-border/20 bg-brand-yellow/10 p-3 text-sm font-semibold text-brand-black/90">
+              Preparando seu pedido...
+            </div>
+          )}
+
+          {acceptedPartner ? (
+            <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
+              <div className="text-sm font-bold text-brand-black">Reboque que aceitou</div>
+              <div className="mt-2 text-sm text-brand-black/80">
+                <div className="font-semibold text-brand-black">{acceptedPartner.empresa_nome ?? "Reboque parceiro"}</div>
+                <div className="mt-1 text-xs text-brand-black/70">
+                  {acceptedPartner.caminhao_tipo ? `${acceptedPartner.caminhao_tipo} • ` : ""}
+                  {acceptedPartner.caminhao_modelo ?? "—"}
+                  {acceptedPartner.caminhao_placa ? ` • Placa ${acceptedPartner.caminhao_placa}` : ""}
+                </div>
+                {acceptedPartner.whatsapp_number ? (
+                  <div className="mt-1 text-xs text-brand-black/70">WhatsApp: {acceptedPartner.whatsapp_number}</div>
+                ) : null}
+              </div>
+            </div>
+          ) : activeProposals.length ? (
+            <div className="space-y-2">
+              <div className="text-sm font-bold text-brand-black">Propostas recebidas</div>
+              <div className="space-y-2">
+                {activeProposals.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-brand-border/20 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-brand-black">{p.partner?.empresa_nome ?? "Reboque parceiro"}</div>
+                        <div className="mt-1 text-xs text-brand-black/70">
+                          ETA {Number(p.eta_minutes).toFixed(0)} min • R$ {Number(p.valor).toFixed(2)}
+                        </div>
+                        {p.partner?.caminhao_modelo ? (
+                          <div className="mt-1 text-xs text-brand-black/70">{p.partner.caminhao_modelo}</div>
+                        ) : null}
+                      </div>
+                      <button
+                        className="btn-primary shrink-0 disabled:opacity-50"
+                        type="button"
+                        disabled={Boolean(isAcceptingProposal)}
+                        onClick={() => void acceptProposalFromModal(p.id)}
+                      >
+                        {isAcceptingProposal === p.id ? "Aceitando..." : "Aceitar"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-brand-border/20 bg-white p-4">
+              <div className="text-sm font-bold text-brand-black">Buscando reboques parceiros...</div>
+              <div className="mt-1 text-xs text-brand-black/70">Aguarde enquanto enviamos seu pedido para a região.</div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={isLocationModalOpen}

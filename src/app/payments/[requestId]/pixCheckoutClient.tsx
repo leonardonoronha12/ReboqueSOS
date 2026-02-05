@@ -217,6 +217,10 @@ export function PixCheckoutClient(props: { requestId: string }) {
           <div className="text-xs text-brand-black/70">
             Abra o app do seu banco e escaneie o QR Code ou copie o código Pix.
           </div>
+          <div className="rounded-md border bg-zinc-50 p-3 text-xs text-zinc-700">
+            Alguns bancos exibem o recebedor como <span className="font-semibold">ASAAS</span> (instituição de pagamento).
+            O pagamento é referente ao seu pedido no <span className="font-semibold">ReboqueSOS</span>.
+          </div>
           <div className="rounded-md border bg-white p-3 text-xs text-brand-black/80">
             <div className="break-all">{data.qrCode ? String(data.qrCode) : "—"}</div>
           </div>
