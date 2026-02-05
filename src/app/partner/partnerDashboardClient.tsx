@@ -818,13 +818,6 @@ export function PartnerDashboardClient(props: {
             >
               {isUpdating ? "Atualizando..." : ativo ? "Ficar inativo" : "Ficar ativo"}
             </button>
-            <button
-              type="button"
-              className="rounded-2xl border border-brand-border/20 bg-white px-4 py-3 text-sm font-semibold text-brand-black hover:bg-brand-yellow/10"
-              onClick={playShortAlert}
-            >
-              {soundReady ? "Som OK" : "Ativar som"}
-            </button>
             {updateError ? <div className="text-right text-xs font-semibold text-brand-red">{updateError}</div> : null}
           </div>
         </div>
