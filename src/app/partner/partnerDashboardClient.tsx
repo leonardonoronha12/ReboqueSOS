@@ -884,7 +884,7 @@ export function PartnerDashboardClient(props: {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-brand-border/20 bg-white p-4 shadow-soft">
+        <div className="rounded-3xl border border-brand-border/20 bg-white p-4 shadow-soft overflow-hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-extrabold text-brand-black">Pedidos recebidos</div>
             <a className="text-xs font-semibold text-brand-black underline" href={`/partner?cidade=${encodeURIComponent(props.cidade)}`}>
@@ -893,7 +893,7 @@ export function PartnerDashboardClient(props: {
           </div>
 
           {requests.length ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain space-y-2 pr-1">
               {requests.slice(0, 10).map((r) => (
                 <a
                   key={r.id}
@@ -919,7 +919,7 @@ export function PartnerDashboardClient(props: {
           )}
         </div>
 
-        <div className="rounded-3xl border border-brand-border/20 bg-white p-4 shadow-soft">
+        <div className="rounded-3xl border border-brand-border/20 bg-white p-4 shadow-soft overflow-hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-extrabold text-brand-black">Minhas corridas</div>
             <a className="text-xs font-semibold text-brand-black underline" href="/partner">
@@ -928,7 +928,7 @@ export function PartnerDashboardClient(props: {
           </div>
 
           {props.trips.length ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain space-y-2 pr-1">
               {props.trips.slice(0, 10).map((t) => (
                 <a
                   key={t.id}
