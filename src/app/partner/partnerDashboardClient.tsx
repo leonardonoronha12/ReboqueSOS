@@ -965,7 +965,7 @@ export function PartnerDashboardClient(props: {
                 <a
                   key={t.id}
                   className="block rounded-2xl border border-brand-border/20 bg-white p-3 hover:bg-brand-yellow/10"
-                  href={`/partner/trips/${t.id}`}
+                  href={`/partner/trips/${t.id}/history`}
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                     <div className="w-full min-w-0">
