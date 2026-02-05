@@ -41,6 +41,8 @@ type TripRow = {
 
 type Coords = { lat: number; lng: number };
 
+const PARTNER_REQUEST_RADIUS_KM = 35;
+
 function StatusPill(props: { label: string; tone?: "yellow" | "red" | "green" | "gray" }) {
   const tone = props.tone ?? "gray";
   const cls =
@@ -437,6 +439,7 @@ export function PartnerDashboardClient(props: {
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertRequest, setAlertRequest] = useState<RequestRow | null>(null);
   const [myCoords, setMyCoords] = useState<Coords | null>(null);
+  const myCoordsRef = useRef<Coords | null>(null);
   const seenRequestIdsRef = useRef(new Set<string>());
   const pollingInFlightRef = useRef(false);
 
@@ -511,7 +514,6 @@ export function PartnerDashboardClient(props: {
   }, [props.requests]);
 
   useEffect(() => {
-    if (!ativo) return;
     if (!navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
@@ -523,7 +525,11 @@ export function PartnerDashboardClient(props: {
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 },
     );
     return () => navigator.geolocation.clearWatch(id);
-  }, [ativo]);
+  }, []);
+
+  useEffect(() => {
+    myCoordsRef.current = myCoords;
+  }, [myCoords]);
 
   useEffect(() => {
     let cancelled = false;
@@ -559,10 +565,10 @@ export function PartnerDashboardClient(props: {
     }
 
     const channel = supabase
-      .channel(`partner_alerts:${props.cidade}`)
+      .channel("partner_alerts_nearby")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "tow_requests", filter: `cidade=eq.${props.cidade}` },
+        { event: "INSERT", schema: "public", table: "tow_requests" },
         async (payload) => {
           if (cancelled) return;
           const row = payload.new as { id?: string; status?: string };
@@ -592,6 +598,14 @@ export function PartnerDashboardClient(props: {
             modelo_veiculo: typeof req.modelo_veiculo === "string" ? req.modelo_veiculo : null,
           };
 
+          const coords = myCoordsRef.current;
+          if (coords && typeof normalized.lat === "number" && typeof normalized.lng === "number") {
+            const km = haversineKm(coords, { lat: normalized.lat, lng: normalized.lng });
+            if (!(km <= PARTNER_REQUEST_RADIUS_KM)) return;
+          } else if (normalized.cidade !== props.cidade) {
+            return;
+          }
+
           setRequests((prev) => (prev.some((r) => r.id === normalized.id) ? prev : [normalized, ...prev].slice(0, 20)));
           setAlertRequest(normalized);
           setAlertOpen(true);
@@ -618,7 +632,14 @@ export function PartnerDashboardClient(props: {
       if (pollingInFlightRef.current) return;
       pollingInFlightRef.current = true;
       try {
-        const res = await fetch("/api/partner/requests/open", { cache: "no-store" });
+        const coords = myCoordsRef.current;
+        const url = new URL("/api/partner/requests/open", window.location.origin);
+        if (coords) {
+          url.searchParams.set("lat", String(coords.lat));
+          url.searchParams.set("lng", String(coords.lng));
+          url.searchParams.set("radius_km", String(PARTNER_REQUEST_RADIUS_KM));
+        }
+        const res = await fetch(url.toString(), { cache: "no-store" });
         const json = await readJsonResponse<{ requests?: Array<Partial<RequestRow>>; error?: string }>(res);
         if (!res.ok) return;
         const list = (json?.requests ?? []) as Array<Partial<RequestRow>>;
